@@ -1,0 +1,42 @@
+# Project-specific
+AGENT.md
+MEMORY.md
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE / Editor
+.vscode/
+.idea/
+.codex
+.codex/
+.claude
+.claude/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Node (if build tools added later)
+node_modules/
+dist/
+coverage/
+.cache/
+
+# Chrome extension packaging
+*.crx
+*.pem
+*.zip

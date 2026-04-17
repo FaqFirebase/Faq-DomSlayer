@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faq DomSlayer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <header>
+      <h1>Faq DomSlayer</h1>
+      <label class="toggle" title="Enable/Disable">
+        <input type="checkbox" id="globalToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </header>
+
+    <section class="stats" id="statsSection">
+      <div class="stat">
+        <span class="stat-label">DOM Nodes</span>
+        <span class="stat-value" id="domNodes">--</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Trimmed</span>
+        <span class="stat-value" id="trimmedCount">--</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Site</span>
+        <span class="stat-value" id="currentSite">--</span>
+      </div>
+    </section>
+
+    <section class="stats memory-stats" id="memoryStatsSection" style="display:none;">
+      <div class="stat">
+        <span class="stat-label">Heap Used</span>
+        <span class="stat-value" id="heapUsed">--</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Heap Total</span>
+        <span class="stat-value" id="heapTotal">--</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Timers</span>
+        <span class="stat-value" id="activeTimers">--</span>
+      </div>
+    </section>
+
+    <section class="settings">
+      <div class="setting-row">
+        <label for="maxMessages">Max visible messages</label>
+        <div class="range-group">
+          <input type="range" id="maxMessages" min="5" max="50" value="15">
+          <span id="maxMessagesValue">15</span>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <label for="trimMode">Trim mode</label>
+        <select id="trimMode">
+          <option value="placeholder">Placeholder (restore on click)</option>
+          <option value="collapse">Collapse (show preview)</option>
+          <option value="remove">Remove (aggressive)</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label for="observerCleanup">Clean stale timers</label>
+        <label class="toggle small">
+          <input type="checkbox" id="observerCleanup" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="setting-row">
+        <label for="memoryMonitor">Show memory stats</label>
+        <label class="toggle small">
+          <input type="checkbox" id="memoryMonitor">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="forceCleanup" class="btn btn-secondary">Force Cleanup</button>
+      <button id="restoreAll" class="btn btn-secondary">Restore All</button>
+    </section>
+
+    <footer>
+      <span id="statusText"></span>
+    </footer>
+  </div>
+
+  <script src="../utils/constants.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

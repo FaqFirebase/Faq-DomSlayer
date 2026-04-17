@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "Faq DomSlayer",
+  "version": "1.0.0",
+  "description": "Tames bloated DOM on AI chat sites to slash memory usage. Supports ChatGPT, Gemini, Claude, Perplexity, and Copilot.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://chatgpt.com/*",
+    "*://*.chatgpt.com/*",
+    "*://gemini.google.com/*",
+    "*://aistudio.google.com/*",
+    "*://claude.ai/*",
+    "*://*.claude.ai/*",
+    "*://perplexity.ai/*",
+    "*://*.perplexity.ai/*",
+    "*://copilot.microsoft.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/fts_clean_16.png",
+      "48": "icons/fts_clean_48.png",
+      "128": "icons/fts_clean_128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://chatgpt.com/*",
+        "*://*.chatgpt.com/*",
+        "*://gemini.google.com/*",
+        "*://aistudio.google.com/*",
+        "*://claude.ai/*",
+        "*://*.claude.ai/*",
+        "*://perplexity.ai/*",
+        "*://*.perplexity.ai/*",
+        "*://copilot.microsoft.com/*"
+      ],
+      "js": [
+        "utils/constants.js",
+        "content/core/dom-trimmer.js",
+        "content/core/observer-cleaner.js",
+        "content/core/memory-monitor.js",
+        "content/sites/chatgpt.js",
+        "content/sites/gemini.js",
+        "content/sites/claude.js",
+        "content/sites/perplexity.js",
+        "content/sites/copilot.js",
+        "content/injector.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/fts_clean_16.png",
+    "48": "icons/fts_clean_48.png",
+    "128": "icons/fts_clean_128.png"
+  }
+}
