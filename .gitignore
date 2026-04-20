@@ -1,6 +1,7 @@
 # Project-specific
 AGENT.md
 MEMORY.md
+TODO.md
 
 # OS files
 .DS_Store
@@ -40,3 +41,7 @@ coverage/
 *.crx
 *.pem
 *.zip
+releases/
+
+# Dev tooling
+scripts/
