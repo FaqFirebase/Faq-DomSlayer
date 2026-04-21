@@ -7,7 +7,14 @@ const DEFAULT_SETTINGS = Object.freeze({
   enableObserverCleanup: true,
   cleanupIntervalMs: 30000,
   enableMemoryMonitor: false,
+  debugMode: false,
   siteOverrides: {}
+});
+
+const DEFAULT_SITE_OVERRIDE = Object.freeze({
+  enabled: true,
+  maxMessages: 15,
+  trimMode: 'placeholder'
 });
 
 const TRIM_MODES = Object.freeze({
@@ -22,6 +29,14 @@ const SITE_IDS = Object.freeze({
   CLAUDE: 'claude',
   PERPLEXITY: 'perplexity',
   COPILOT: 'copilot'
+});
+
+const SITE_NAMES = Object.freeze({
+  [SITE_IDS.CHATGPT]: 'ChatGPT',
+  [SITE_IDS.GEMINI]: 'Gemini',
+  [SITE_IDS.CLAUDE]: 'Claude',
+  [SITE_IDS.PERPLEXITY]: 'Perplexity',
+  [SITE_IDS.COPILOT]: 'Copilot'
 });
 
 const SITE_URL_MAP = Object.freeze({
@@ -46,5 +61,5 @@ const SELECTORS = Object.freeze({
 });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { DEFAULT_SETTINGS, TRIM_MODES, SITE_IDS, SITE_URL_MAP, MESSAGES, SELECTORS };
+  module.exports = { DEFAULT_SETTINGS, DEFAULT_SITE_OVERRIDE, TRIM_MODES, SITE_IDS, SITE_NAMES, SITE_URL_MAP, MESSAGES, SELECTORS };
 }

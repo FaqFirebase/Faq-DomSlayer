@@ -6,7 +6,9 @@ class ChatGPTAdapter {
   getChatContainer() {
     return document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
-           document.querySelector('.flex-1.overflow-hidden');
+           document.querySelector('.flex-1.overflow-hidden') ||
+           document.querySelector('#__next main') ||
+           document.querySelector('[class*="relative"][class*="flex-1"]');
   }
 
   getMessageContainers() {
@@ -15,12 +17,18 @@ class ChatGPTAdapter {
       'article[data-testid]',
       '.text-base.gap-6',
       '[data-message-author-role]',
-      '.group\\/conversation-turn'
+      '.group\\/conversation-turn',
+      '[data-testid="conversation-turn-"]',
+      'div[class*="group/conversation-turn"]'
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) return elements;
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+      } catch {
+        // Invalid selector, skip
+      }
     }
 
     return this.fallbackMessageDetection();
@@ -34,7 +42,7 @@ class ChatGPTAdapter {
     return Array.from(candidates).filter(el => {
       const text = el.textContent || '';
       return text.length > 10 && text.length < 100000 &&
-             (el.querySelector('pre') || el.querySelector('p') || el.querySelector('code'));
+             (el.querySelector('pre') || el.querySelector('p') || el.querySelector('code') || el.querySelector('article'));
     });
   }
 
@@ -49,7 +57,9 @@ class ChatGPTAdapter {
           if (node.nodeType === Node.ELEMENT_NODE) {
             if (node.matches?.('[data-testid^="conversation-turn"]') ||
                 node.matches?.('article') ||
-                node.querySelector?.('[data-testid^="conversation-turn"]')) {
+                node.matches?.('[data-message-author-role]') ||
+                node.querySelector?.('[data-testid^="conversation-turn"]') ||
+                node.querySelector?.('[data-message-author-role]')) {
               hasNewMessages = true;
               break;
             }

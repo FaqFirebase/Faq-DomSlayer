@@ -7,7 +7,9 @@ class PerplexityAdapter {
     return document.querySelector('[class*="thread-container"]') ||
            document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
-           document.querySelector('.scrollable-container');
+           document.querySelector('.scrollable-container') ||
+           document.querySelector('[class*="prose"]') ||
+           document.querySelector('[class*="thread"]');
   }
 
   getMessageContainers() {
@@ -17,12 +19,18 @@ class PerplexityAdapter {
       '[class*="prose"]',
       '.markdown-content',
       '[class*="thread-item"]',
-      'div[class*="answer"]'
+      'div[class*="answer"]',
+      '[class*="message"]',
+      'div[class*="query"]'
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) return elements;
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+      } catch {
+        // Invalid selector, skip
+      }
     }
 
     return this.fallbackMessageDetection();
@@ -32,7 +40,7 @@ class PerplexityAdapter {
     const main = this.getChatContainer();
     if (!main) return [];
 
-    const candidates = main.querySelectorAll('div[class*="query"], div[class*="answer"], div[class*="response"]');
+    const candidates = main.querySelectorAll('div[class*="query"], div[class*="answer"], div[class*="response"], div[class*="thread"]');
     return Array.from(candidates).filter(el => {
       const text = el.textContent || '';
       return text.length > 10;
@@ -52,6 +60,7 @@ class PerplexityAdapter {
             if (className.includes('query') ||
                 className.includes('result') ||
                 className.includes('answer') ||
+                className.includes('thread') ||
                 node.querySelector?.('[class*="QueryBox"], [class*="result"]')) {
               hasNewMessages = true;
               break;

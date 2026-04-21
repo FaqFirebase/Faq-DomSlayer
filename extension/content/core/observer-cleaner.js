@@ -1,6 +1,7 @@
 class ObserverCleaner {
-  constructor(settings) {
+  constructor(settings, debug) {
     this.settings = settings;
+    this.debug = debug || { log: () => {}, warn: () => {}, error: () => {}, info: () => {} };
     this.originalSetInterval = window.setInterval;
     this.originalSetTimeout = window.setTimeout;
     this.originalClearInterval = window.clearInterval;
@@ -15,6 +16,7 @@ class ObserverCleaner {
   start() {
     if (this.isActive) return;
     this.isActive = true;
+    this.debug.info('ObserverCleaner starting');
     this.interceptTimers();
     this.scheduleCleanup();
   }
@@ -32,6 +34,7 @@ class ObserverCleaner {
     window.requestAnimationFrame = this.originalRAF;
     window.cancelAnimationFrame = this.originalCancelRAF;
     this.trackedTimers.clear();
+    this.debug.info('ObserverCleaner stopped');
   }
 
   interceptTimers() {
@@ -127,17 +130,20 @@ class ObserverCleaner {
   cleanStaleTimers() {
     const now = Date.now();
     const maxTimerAge = 120000;
+    let cleaned = 0;
 
     for (const [id, info] of this.trackedTimers) {
       if (info.type === 'timeout' && now - info.created > maxTimerAge) {
         this.originalClearTimeout.call(window, id);
         this.trackedTimers.delete(id);
+        cleaned++;
         continue;
       }
 
       if (info.type === 'raf' && now - info.created > maxTimerAge) {
         this.originalCancelRAF.call(window, id);
         this.trackedTimers.delete(id);
+        cleaned++;
         continue;
       }
 
@@ -145,8 +151,13 @@ class ObserverCleaner {
         if (info.isObserverBound && now - info.created > maxTimerAge) {
           this.originalClearInterval.call(window, id);
           this.trackedTimers.delete(id);
+          cleaned++;
         }
       }
+    }
+
+    if (cleaned > 0) {
+      this.debug.log(`Cleaned ${cleaned} stale timers`);
     }
 
     if (typeof window.performance !== 'undefined' && window.performance.memory) {

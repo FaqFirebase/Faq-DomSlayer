@@ -8,7 +8,8 @@ class ClaudeAdapter {
            document.querySelector('[class*="conversation"]') ||
            document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
-           document.querySelector('.flex-1.overflow-y-auto');
+           document.querySelector('.flex-1.overflow-y-auto') ||
+           document.querySelector('[class*="scrollable"]');
   }
 
   getMessageContainers() {
@@ -18,12 +19,18 @@ class ClaudeAdapter {
       '[class*="font-claude-message"]',
       '.message-content',
       '[class*="message-wrapper"]',
-      'div[class*="group"][data-testid]'
+      'div[class*="group"][data-testid]',
+      '[class*="chat-message"]',
+      'div[class*="message"]'
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) return elements;
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+      } catch {
+        // Invalid selector, skip
+      }
     }
 
     return this.fallbackMessageDetection();
@@ -51,7 +58,9 @@ class ClaudeAdapter {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const testId = node.getAttribute?.('data-testid') || '';
             if (testId.includes('chat-message') ||
-                node.querySelector?.('[data-testid="chat-message"]')) {
+                node.querySelector?.('[data-testid="chat-message"]') ||
+                node.matches?.('[class*="font-user-message"]') ||
+                node.matches?.('[class*="font-claude-message"]')) {
               hasNewMessages = true;
               break;
             }

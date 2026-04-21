@@ -8,7 +8,8 @@ class CopilotAdapter {
            document.querySelector('[class*="conversation"]') ||
            document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
-           document.querySelector('.cib-serp-main');
+           document.querySelector('.cib-serp-main') ||
+           document.querySelector('cib-serp');
   }
 
   getMessageContainers() {
@@ -18,12 +19,18 @@ class CopilotAdapter {
       'cib-message',
       '[class*="message-content"]',
       '[class*="turn"]',
-      '.ac-textBlock'
+      '.ac-textBlock',
+      'cib-message-group',
+      '[class*="message-group"]'
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) return elements;
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+      } catch {
+        // Invalid selector, skip
+      }
     }
 
     return this.fallbackMessageDetection();
@@ -33,7 +40,7 @@ class CopilotAdapter {
     const main = this.getChatContainer();
     if (!main) return [];
 
-    const candidates = main.querySelectorAll('div[class*="message"], div[class*="response"], div[class*="turn"]');
+    const candidates = main.querySelectorAll('div[class*="message"], div[class*="response"], div[class*="turn"], cib-message');
     return Array.from(candidates).filter(el => {
       const text = el.textContent || '';
       return text.length > 10;
@@ -51,6 +58,7 @@ class CopilotAdapter {
           if (node.nodeType === Node.ELEMENT_NODE) {
             const tag = node.tagName?.toLowerCase();
             if (tag === 'cib-message' ||
+                tag === 'cib-message-group' ||
                 tag?.startsWith('cib-') ||
                 node.querySelector?.('cib-message')) {
               hasNewMessages = true;

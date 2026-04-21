@@ -1,5 +1,6 @@
 class MemoryMonitor {
-  constructor() {
+  constructor(debug) {
+    this.debug = debug || { log: () => {}, warn: () => {}, error: () => {}, info: () => {} };
     this.isActive = false;
     this.monitorInterval = null;
     this.lastStats = null;
@@ -8,6 +9,7 @@ class MemoryMonitor {
   start() {
     if (this.isActive) return;
     this.isActive = true;
+    this.debug.info('MemoryMonitor starting');
     this.monitorInterval = setInterval(() => this.collectStats(), 5000);
     this.collectStats();
   }
@@ -18,6 +20,7 @@ class MemoryMonitor {
       clearInterval(this.monitorInterval);
       this.monitorInterval = null;
     }
+    this.debug.info('MemoryMonitor stopped');
   }
 
   collectStats() {
@@ -45,6 +48,7 @@ class MemoryMonitor {
     stats.detachedNodes = this.countDetachedNodes();
 
     this.lastStats = stats;
+    this.debug.log('Memory stats', stats);
     return stats;
   }
 

@@ -8,7 +8,8 @@ class GeminiAdapter {
            document.querySelector('[class*="chat-history"]') ||
            document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
-           document.querySelector('.app-container main');
+           document.querySelector('.app-container main') ||
+           document.querySelector('div[class*="history"]');
   }
 
   getMessageContainers() {
@@ -19,12 +20,18 @@ class GeminiAdapter {
       '[class*="user-query"]',
       '.conversation-turn',
       '[data-content-type]',
-      'user-query, model-response'
+      'user-query, model-response',
+      '[class*="turn"]',
+      'div[class*="query"], div[class*="response"]'
     ];
 
     for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) return elements;
+      try {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+      } catch {
+        // Invalid selector, skip
+      }
     }
 
     return this.fallbackMessageDetection();
@@ -34,7 +41,7 @@ class GeminiAdapter {
     const main = this.getChatContainer();
     if (!main) return [];
 
-    const candidates = main.querySelectorAll('div[class*="response"], div[class*="query"], div[class*="message"]');
+    const candidates = main.querySelectorAll('div[class*="response"], div[class*="query"], div[class*="message"], message-content');
     return Array.from(candidates).filter(el => {
       const text = el.textContent || '';
       return text.length > 10;

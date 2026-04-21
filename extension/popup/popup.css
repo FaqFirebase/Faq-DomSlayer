@@ -216,6 +216,92 @@ select:focus {
   color: #ffffff;
 }
 
+.site-overrides {
+  margin-bottom: 16px;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #242438;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #b0b0c0;
+  user-select: none;
+}
+
+.section-header:hover {
+  background: #2e2e44;
+}
+
+.chevron {
+  font-size: 10px;
+  transition: transform 0.2s;
+  color: #8888a0;
+}
+
+.site-overrides.collapsed .chevron {
+  transform: rotate(-90deg);
+}
+
+.site-overrides.collapsed .site-overrides-content {
+  display: none;
+}
+
+.site-overrides-content {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.site-card {
+  background: #1e1e30;
+  border: 1px solid #2a2a3e;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.site-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.site-card-header span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.site-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.site-card-row label {
+  font-size: 11px;
+  color: #8888a0;
+}
+
+.site-card-row .range-group input[type="range"] {
+  width: 80px;
+}
+
+.site-card-row select {
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
 footer {
   text-align: center;
 }

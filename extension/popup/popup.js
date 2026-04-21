@@ -6,6 +6,7 @@ async function loadSettings() {
   const data = await chrome.storage.sync.get(STORAGE_KEY);
   currentSettings = data[STORAGE_KEY] || DEFAULT_SETTINGS;
   applyToUI(currentSettings);
+  buildSiteOverrides(currentSettings);
 }
 
 function applyToUI(settings) {
@@ -15,6 +16,7 @@ function applyToUI(settings) {
   $('trimMode').value = settings.trimMode;
   $('observerCleanup').checked = settings.enableObserverCleanup;
   $('memoryMonitor').checked = settings.enableMemoryMonitor;
+  $('debugMode').checked = settings.debugMode || false;
   toggleMemoryStats(settings.enableMemoryMonitor);
 }
 
@@ -22,16 +24,114 @@ function toggleMemoryStats(show) {
   $('memoryStatsSection').style.display = show ? 'grid' : 'none';
 }
 
+function buildSiteOverrides(settings) {
+  const container = $('siteOverridesContent');
+  container.innerHTML = '';
+
+  for (const siteId of Object.values(SITE_IDS)) {
+    const siteName = SITE_NAMES[siteId] || siteId;
+    const override = settings.siteOverrides?.[siteId] || {};
+    const isOverridden = !!settings.siteOverrides?.[siteId];
+
+    const card = document.createElement('div');
+    card.className = 'site-card';
+    card.dataset.siteId = siteId;
+
+    card.innerHTML = `
+      <div class="site-card-header">
+        <span>${siteName}</span>
+        <label class="toggle small" title="Enable override">
+          <input type="checkbox" class="site-override-toggle" ${isOverridden ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="site-override-fields" style="${isOverridden ? '' : 'display:none; opacity:0.5; pointer-events:none;'}">
+        <div class="site-card-row">
+          <label>Max messages</label>
+          <div class="range-group">
+            <input type="range" class="site-max-messages" min="5" max="50" value="${override.maxMessages || settings.maxMessages}">
+            <span class="site-max-value">${override.maxMessages || settings.maxMessages}</span>
+          </div>
+        </div>
+        <div class="site-card-row">
+          <label>Trim mode</label>
+          <select class="site-trim-mode">
+            <option value="placeholder" ${(override.trimMode || settings.trimMode) === 'placeholder' ? 'selected' : ''}>Placeholder</option>
+            <option value="collapse" ${(override.trimMode || settings.trimMode) === 'collapse' ? 'selected' : ''}>Collapse</option>
+            <option value="remove" ${(override.trimMode || settings.trimMode) === 'remove' ? 'selected' : ''}>Remove</option>
+          </select>
+        </div>
+      </div>
+    `;
+
+    const toggle = card.querySelector('.site-override-toggle');
+    const fields = card.querySelector('.site-override-fields');
+    const maxInput = card.querySelector('.site-max-messages');
+    const maxValue = card.querySelector('.site-max-value');
+    const trimSelect = card.querySelector('.site-trim-mode');
+
+    toggle.addEventListener('change', () => {
+      const enabled = toggle.checked;
+      fields.style.display = enabled ? '' : 'none';
+      fields.style.opacity = enabled ? '' : '0.5';
+      fields.style.pointerEvents = enabled ? '' : 'none';
+      if (!enabled) {
+        maxInput.value = settings.maxMessages;
+        maxValue.textContent = settings.maxMessages;
+        trimSelect.value = settings.trimMode;
+      }
+      saveSettings();
+    });
+
+    maxInput.addEventListener('input', (e) => {
+      maxValue.textContent = e.target.value;
+    });
+    maxInput.addEventListener('change', saveSettings);
+    trimSelect.addEventListener('change', saveSettings);
+
+    container.appendChild(card);
+  }
+}
+
 async function saveSettings() {
+  const siteOverrides = {};
+  const cards = document.querySelectorAll('.site-card');
+  for (const card of cards) {
+    const siteId = card.dataset.siteId;
+    const toggle = card.querySelector('.site-override-toggle');
+    if (toggle.checked) {
+      siteOverrides[siteId] = {
+        enabled: true,
+        maxMessages: parseInt(card.querySelector('.site-max-messages').value, 10),
+        trimMode: card.querySelector('.site-trim-mode').value
+      };
+    }
+  }
+
   currentSettings = {
     enabled: $('globalToggle').checked,
     maxMessages: parseInt($('maxMessages').value, 10),
     trimMode: $('trimMode').value,
     enableObserverCleanup: $('observerCleanup').checked,
     enableMemoryMonitor: $('memoryMonitor').checked,
-    siteOverrides: currentSettings.siteOverrides || {}
+    debugMode: $('debugMode').checked,
+    siteOverrides
   };
+
   await chrome.storage.sync.set({ [STORAGE_KEY]: currentSettings });
+
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tabs[0]) {
+    try {
+      await chrome.tabs.sendMessage(tabs[0].id, {
+        type: MESSAGES.SETTINGS_UPDATED,
+        settings: currentSettings
+      });
+    } catch {
+      // Tab may not have content script injected
+    }
+  }
+
   showStatus('Settings saved');
 }
 
@@ -84,6 +184,12 @@ $('observerCleanup').addEventListener('change', saveSettings);
 $('memoryMonitor').addEventListener('change', () => {
   toggleMemoryStats($('memoryMonitor').checked);
   saveSettings();
+});
+$('debugMode').addEventListener('change', saveSettings);
+
+$('siteOverridesToggle').addEventListener('click', () => {
+  const section = $('siteOverridesToggle').parentElement;
+  section.classList.toggle('collapsed');
 });
 
 $('forceCleanup').addEventListener('click', async () => {

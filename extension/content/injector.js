@@ -46,6 +46,16 @@ function getSiteSettings(settings, siteId) {
   return { ...settings, ...overrides };
 }
 
+function createDebugLogger(siteId, enabled) {
+  const prefix = `[AICO:${SITE_NAMES[siteId] || siteId}]`;
+  return {
+    log: (...args) => { if (enabled) console.log(prefix, ...args); },
+    warn: (...args) => { if (enabled) console.warn(prefix, ...args); },
+    error: (...args) => { if (enabled) console.error(prefix, ...args); },
+    info: (...args) => { if (enabled) console.info(prefix, ...args); }
+  };
+}
+
 async function init() {
   const siteId = detectSite();
   if (!siteId) return;
@@ -54,18 +64,23 @@ async function init() {
   if (!adapter) return;
 
   let settings = getSiteSettings(await getSettings(), siteId);
+  const debug = createDebugLogger(siteId, settings.debugMode);
 
-  const trimmer = new DomTrimmer(adapter, settings);
-  const observerCleaner = new ObserverCleaner(settings);
-  const memoryMonitor = new MemoryMonitor();
+  debug.info('Initializing on', window.location.hostname);
+
+  const trimmer = new DomTrimmer(adapter, settings, debug);
+  const observerCleaner = new ObserverCleaner(settings, debug);
+  const memoryMonitor = new MemoryMonitor(debug);
 
   if (settings.enabled) {
     const waitForContainer = () => {
       const container = adapter.getChatContainer();
       if (container) {
+        debug.log('Container found, starting observation');
         trimmer.startObserving();
         trimmer.performTrim();
       } else {
+        debug.log('Container not found, retrying...');
         if (typeof requestIdleCallback === 'function') {
           requestIdleCallback(waitForContainer, { timeout: 2000 });
         } else {
@@ -74,6 +89,8 @@ async function init() {
       }
     };
     waitForContainer();
+  } else {
+    debug.info('Extension disabled for this site');
   }
 
   if (settings.enableObserverCleanup) {
@@ -88,6 +105,7 @@ async function init() {
     switch (message.type) {
       case MESSAGES.SETTINGS_UPDATED: {
         settings = getSiteSettings(message.settings, siteId);
+        debug.log('Settings updated', settings);
         trimmer.updateSettings(settings);
         observerCleaner.updateSettings(settings);
         memoryMonitor.updateSettings(settings);
@@ -97,20 +115,24 @@ async function init() {
       case MESSAGES.GET_STATS: {
         const stats = trimmer.getStats();
         const memStats = memoryMonitor.getStats();
-        sendResponse({
+        const response = {
           ...stats,
           ...memStats,
           observerStats: observerCleaner.getStats()
-        });
+        };
+        debug.log('Stats requested', response);
+        sendResponse(response);
         break;
       }
       case MESSAGES.FORCE_CLEANUP: {
+        debug.info('Force cleanup requested');
         trimmer.forceCleanup();
         observerCleaner.cleanStaleTimers();
         sendResponse({ success: true, ...trimmer.getStats() });
         break;
       }
       case MESSAGES.RESTORE_ALL: {
+        debug.info('Restore all requested');
         trimmer.restoreAll();
         sendResponse({ success: true });
         break;
@@ -123,13 +145,14 @@ async function init() {
     if (area === 'sync' && changes[STORAGE_KEY]) {
       const newSettings = changes[STORAGE_KEY].newValue;
       settings = getSiteSettings(newSettings, siteId);
+      debug.log('Storage changed, updating settings');
       trimmer.updateSettings(settings);
       observerCleaner.updateSettings(settings);
       memoryMonitor.updateSettings(settings);
     }
   });
 
-  window.__aico = { trimmer, observerCleaner, memoryMonitor };
+  window.__aico = { trimmer, observerCleaner, memoryMonitor, debug };
 }
 
 init();

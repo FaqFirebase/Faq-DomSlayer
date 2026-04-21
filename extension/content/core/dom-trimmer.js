@@ -1,7 +1,8 @@
 class DomTrimmer {
-  constructor(adapter, settings) {
+  constructor(adapter, settings, debug) {
     this.adapter = adapter;
     this.settings = settings;
+    this.debug = debug || { log: () => {}, warn: () => {}, error: () => {}, info: () => {} };
     this.trimmedCount = 0;
     this.observer = null;
     this.isRestoring = false;
@@ -10,6 +11,7 @@ class DomTrimmer {
 
   updateSettings(settings) {
     this.settings = settings;
+    this.debug = settings.debugMode ? (window.__aico?.debug || this.debug) : { log: () => {}, warn: () => {}, error: () => {}, info: () => {} };
     if (settings.enabled) {
       this.startObserving();
       this.performTrim();
@@ -22,8 +24,12 @@ class DomTrimmer {
   startObserving() {
     this.stopObserving();
     const container = this.adapter.getChatContainer();
-    if (!container) return;
+    if (!container) {
+      this.debug.warn('Cannot start observing: no chat container found');
+      return;
+    }
 
+    this.debug.log('Starting DOM observation');
     this.observer = this.adapter.observeNewMessages(() => {
       if (!this.isRestoring) {
         this.scheduleTrim();
@@ -35,6 +41,7 @@ class DomTrimmer {
     if (this.observer) {
       this.observer.disconnect();
       this.observer = null;
+      this.debug.log('Stopped DOM observation');
     }
   }
 
@@ -47,15 +54,22 @@ class DomTrimmer {
     if (!this.settings.enabled) return;
 
     const messages = this.adapter.getMessageContainers();
-    if (!messages || messages.length === 0) return;
+    if (!messages || messages.length === 0) {
+      this.debug.log('No messages found to trim');
+      return;
+    }
 
     const maxMessages = this.settings.maxMessages;
     const trimMode = this.settings.trimMode;
+
+    this.debug.log(`Messages: ${messages.length}, max: ${maxMessages}, mode: ${trimMode}`);
 
     if (messages.length <= maxMessages) return;
 
     const excess = messages.length - maxMessages;
     const toTrim = Array.from(messages).slice(0, excess);
+
+    this.debug.info(`Trimming ${toTrim.length} messages`);
 
     for (const el of toTrim) {
       if (el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR)) continue;
@@ -161,6 +175,7 @@ class DomTrimmer {
   restoreAll() {
     this.isRestoring = true;
     const placeholders = document.querySelectorAll(`[${SELECTORS.PLACEHOLDER_ATTR}="true"]`);
+    this.debug.info(`Restoring ${placeholders.length} trimmed elements`);
     for (const ph of placeholders) {
       if (ph._restore) {
         ph._restore();
