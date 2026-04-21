@@ -21,9 +21,9 @@
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "icons/fts_clean_16.png",
-      "48": "icons/fts_clean_48.png",
-      "128": "icons/fts_clean_128.png"
+      "16": "icons/fds_final_clean_16.png",
+      "48": "icons/fds_final_clean_48.png",
+      "128": "icons/fds_final_clean_128.png"
     }
   },
   "content_scripts": [
@@ -55,8 +55,8 @@
     }
   ],
   "icons": {
-    "16": "icons/fts_clean_16.png",
-    "48": "icons/fts_clean_48.png",
-    "128": "icons/fts_clean_128.png"
+    "16": "icons/fds_final_clean_16.png",
+    "48": "icons/fds_final_clean_48.png",
+    "128": "icons/fds_final_clean_128.png"
   }
 }

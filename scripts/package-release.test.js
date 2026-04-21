@@ -1,7 +1,12 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { validateManifest, bumpPatchVersion, packageRelease, REQUIRED_MANIFEST_FIELDS } = require('./package-release');
+const {
+  validateManifest,
+  bumpPatchVersion,
+  packageRelease,
+  REQUIRED_MANIFEST_FIELDS
+} = require('./package-release');
 
 function testValidateManifest() {
   const valid = {
