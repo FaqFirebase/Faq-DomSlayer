@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Faq DomSlayer",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Tames bloated DOM on AI chat sites to slash memory usage. Supports ChatGPT, Gemini, Claude, Perplexity, and Copilot.",
   "permissions": ["storage"],
   "host_permissions": [
@@ -42,7 +42,6 @@
       "js": [
         "utils/constants.js",
         "content/core/dom-trimmer.js",
-        "content/core/observer-cleaner.js",
         "content/core/memory-monitor.js",
         "content/sites/chatgpt.js",
         "content/sites/gemini.js",

@@ -184,6 +184,8 @@ function testDefaultSiteOverrideShape() {
 function testNormalizeSettings() {
   const normalizedEmpty = normalizeSettings(null);
   assert.strictEqual(normalizedEmpty.enabled, DEFAULT_SETTINGS.enabled);
+  assert.strictEqual('enableObserverCleanup' in normalizedEmpty, false);
+  assert.strictEqual('cleanupIntervalMs' in normalizedEmpty, false);
   assert.deepStrictEqual(normalizedEmpty.siteOverrides, {});
 
   const normalizedPartial = normalizeSettings({

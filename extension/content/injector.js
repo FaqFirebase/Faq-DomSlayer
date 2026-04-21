@@ -49,7 +49,6 @@ async function init() {
   debug.info('Initializing on', window.location.hostname);
 
   const trimmer = new DomTrimmer(adapter, settings, debug);
-  const observerCleaner = new ObserverCleaner(settings, debug);
   const memoryMonitor = new MemoryMonitor(debug);
 
   if (settings.enabled) {
@@ -73,10 +72,6 @@ async function init() {
     debug.info('Extension disabled for this site');
   }
 
-  if (settings.enableObserverCleanup) {
-    observerCleaner.start();
-  }
-
   if (settings.enableMemoryMonitor) {
     memoryMonitor.start();
   }
@@ -88,7 +83,6 @@ async function init() {
         debug.setEnabled(settings.debugMode);
         debug.log('Settings updated', settings);
         trimmer.updateSettings(settings);
-        observerCleaner.updateSettings(settings);
         memoryMonitor.updateSettings(settings);
         sendResponse({ success: true });
         break;
@@ -98,8 +92,7 @@ async function init() {
         const memStats = memoryMonitor.getStats();
         const response = {
           ...stats,
-          ...memStats,
-          observerStats: observerCleaner.getStats()
+          ...memStats
         };
         debug.log('Stats requested', response);
         sendResponse(response);
@@ -108,7 +101,6 @@ async function init() {
       case MESSAGES.FORCE_CLEANUP: {
         debug.info('Force cleanup requested');
         trimmer.forceCleanup();
-        observerCleaner.cleanStaleTimers();
         sendResponse({ success: true, ...trimmer.getStats() });
         break;
       }
@@ -129,12 +121,11 @@ async function init() {
       debug.setEnabled(settings.debugMode);
       debug.log('Storage changed, updating settings');
       trimmer.updateSettings(settings);
-      observerCleaner.updateSettings(settings);
       memoryMonitor.updateSettings(settings);
     }
   });
 
-  window.__aico = { trimmer, observerCleaner, memoryMonitor, debug };
+  window.__aico = { trimmer, memoryMonitor, debug };
 }
 
 init();

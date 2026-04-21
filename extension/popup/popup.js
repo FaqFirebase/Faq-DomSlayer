@@ -14,7 +14,6 @@ function applyToUI(settings) {
   $('maxMessages').value = settings.maxMessages;
   $('maxMessagesValue').textContent = settings.maxMessages;
   $('trimMode').value = settings.trimMode;
-  $('observerCleanup').checked = settings.enableObserverCleanup;
   $('memoryMonitor').checked = settings.enableMemoryMonitor;
   $('debugMode').checked = settings.debugMode || false;
   toggleMemoryStats(settings.enableMemoryMonitor);
@@ -123,7 +122,6 @@ async function saveSettings() {
     enabled: $('globalToggle').checked,
     maxMessages: parseInt($('maxMessages').value, 10),
     trimMode: $('trimMode').value,
-    enableObserverCleanup: $('observerCleanup').checked,
     enableMemoryMonitor: $('memoryMonitor').checked,
     debugMode: $('debugMode').checked,
     siteOverrides
@@ -169,11 +167,6 @@ async function refreshStats() {
       } else {
         $('heapTotal').textContent = '--';
       }
-      if (response.observerStats) {
-        $('activeTimers').textContent = response.observerStats.total || '0';
-      } else {
-        $('activeTimers').textContent = '--';
-      }
     }
   } catch {
     $('domNodes').textContent = '--';
@@ -181,7 +174,6 @@ async function refreshStats() {
     $('currentSite').textContent = '--';
     $('heapUsed').textContent = '--';
     $('heapTotal').textContent = '--';
-    $('activeTimers').textContent = '--';
   }
 }
 
@@ -191,7 +183,6 @@ $('maxMessages').addEventListener('input', (e) => {
 });
 $('maxMessages').addEventListener('change', saveSettings);
 $('trimMode').addEventListener('change', saveSettings);
-$('observerCleanup').addEventListener('change', saveSettings);
 $('memoryMonitor').addEventListener('change', () => {
   toggleMemoryStats($('memoryMonitor').checked);
   saveSettings();

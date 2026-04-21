@@ -1,6 +1,6 @@
 # Faq DomSlayer
 
-A Chrome extension that reduces memory usage on AI chat sites by trimming bloated DOM and cleaning up leaked resources.
+A Chrome extension that reduces memory usage on AI chat sites by trimming bloated DOM.
 
 ## Supported Sites
 
@@ -20,7 +20,7 @@ AI chat interfaces render every message, code block, and syntax-highlighted toke
 
 ## How It Works
 
-Faq DomSlayer monitors the chat DOM and replaces old messages with lightweight placeholders. It also tracks and cleans stale `setInterval`/`setTimeout` timers that pile up from streaming responses.
+Faq DomSlayer monitors the chat DOM and replaces old messages with lightweight placeholders.
 
 ## Features
 
@@ -28,8 +28,7 @@ Faq DomSlayer monitors the chat DOM and replaces old messages with lightweight p
 |---|---|
 | **DOM Trimming** | Keeps last N messages in DOM, replaces older ones with clickable placeholders |
 | **3 Trim Modes** | Grouped Placeholder (restore on click), Collapse (CSS height limit), Remove (aggressive) |
-| **Stale Timer Cleanup** | Tracks and cleans leaked `setInterval`/`setTimeout`/`requestAnimationFrame` |
-| **Memory Monitoring** | Shows DOM node count, JS heap usage, and active timer count |
+| **Memory Monitoring** | Shows DOM node count and JS heap usage |
 | **Per-Site Adapters** | Tailored CSS selectors for each platform |
 | **One-Click Restore** | Restore all trimmed messages instantly |
 | **Per-Site Overrides** | Enable/disable and tune trim settings individually per platform |
@@ -51,8 +50,7 @@ Click the extension icon to open settings:
 - **Enable/Disable** - Global toggle
 - **Max visible messages** - How many recent messages stay in full DOM (5-50)
 - **Trim mode** - How old messages are handled
-- **Clean stale timers** - Auto-clean leaked timers every 30s
-- **Show memory stats** - Display heap and timer info in popup
+- **Show memory stats** - Display heap info in popup
 - **Debug mode** - Print namespaced diagnostic logs in DevTools
 - **Per-Site Overrides** - Enable/disable and tune trim behavior per supported site
 - **Force Cleanup** - Immediate DOM trim and garbage collection
@@ -88,7 +86,6 @@ extension/
 │   ├── injector.js                # Entry point, site detection
 │   ├── core/
 │   │   ├── dom-trimmer.js         # Generic trim engine
-│   │   ├── observer-cleaner.js    # Timer/observer cleanup
 │   │   └── memory-monitor.js      # Heap monitoring
 │   └── sites/
 │       ├── chatgpt.js             # ChatGPT adapter

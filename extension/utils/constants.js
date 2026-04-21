@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'aico_settings';
 const MANIFEST_VERSION = 3;
-const DEFAULT_CLEANUP_INTERVAL_MS = 30000;
 const DEFAULT_MAX_MESSAGES = 15;
 const PLACEHOLDER_GROUP_MIN_SIZE = 3;
 const PLACEHOLDER_PREVIEW_LENGTH = 80;
@@ -10,8 +9,6 @@ const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
   maxMessages: DEFAULT_MAX_MESSAGES,
   trimMode: 'placeholder',
-  enableObserverCleanup: true,
-  cleanupIntervalMs: DEFAULT_CLEANUP_INTERVAL_MS,
   enableMemoryMonitor: false,
   debugMode: false,
   siteOverrides: {}
@@ -100,8 +97,6 @@ function normalizeSettings(settings) {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SETTINGS.enabled,
     maxMessages: Number.isInteger(source.maxMessages) ? source.maxMessages : DEFAULT_SETTINGS.maxMessages,
     trimMode: Object.values(TRIM_MODES).includes(source.trimMode) ? source.trimMode : DEFAULT_SETTINGS.trimMode,
-    enableObserverCleanup: typeof source.enableObserverCleanup === 'boolean' ? source.enableObserverCleanup : DEFAULT_SETTINGS.enableObserverCleanup,
-    cleanupIntervalMs: Number.isInteger(source.cleanupIntervalMs) ? source.cleanupIntervalMs : DEFAULT_SETTINGS.cleanupIntervalMs,
     enableMemoryMonitor: typeof source.enableMemoryMonitor === 'boolean' ? source.enableMemoryMonitor : DEFAULT_SETTINGS.enableMemoryMonitor,
     debugMode: typeof source.debugMode === 'boolean' ? source.debugMode : DEFAULT_SETTINGS.debugMode,
     siteOverrides
@@ -132,7 +127,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     STORAGE_KEY,
     MANIFEST_VERSION,
-    DEFAULT_CLEANUP_INTERVAL_MS,
     DEFAULT_MAX_MESSAGES,
     PLACEHOLDER_GROUP_MIN_SIZE,
     PLACEHOLDER_PREVIEW_LENGTH,
