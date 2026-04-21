@@ -12,19 +12,19 @@ class ChatGPTAdapter {
   }
 
   getMessageContainers() {
+    const root = this.getChatContainer() || document;
     const selectors = [
       '[data-testid^="conversation-turn"]',
       'article[data-testid]',
       '.text-base.gap-6',
       '[data-message-author-role]',
       '.group\\/conversation-turn',
-      '[data-testid="conversation-turn-"]',
       'div[class*="group/conversation-turn"]'
     ];
 
     for (const selector of selectors) {
       try {
-        const elements = document.querySelectorAll(selector);
+        const elements = root.querySelectorAll(selector);
         if (elements.length > 0) return elements;
       } catch {
         // Invalid selector, skip

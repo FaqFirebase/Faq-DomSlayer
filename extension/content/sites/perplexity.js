@@ -13,11 +13,10 @@ class PerplexityAdapter {
   }
 
   getMessageContainers() {
+    const root = this.getChatContainer() || document;
     const selectors = [
       '[class*="QueryBox"]',
       '[class*="result-container"]',
-      '[class*="prose"]',
-      '.markdown-content',
       '[class*="thread-item"]',
       'div[class*="answer"]',
       '[class*="message"]',
@@ -26,7 +25,7 @@ class PerplexityAdapter {
 
     for (const selector of selectors) {
       try {
-        const elements = document.querySelectorAll(selector);
+        const elements = root.querySelectorAll(selector);
         if (elements.length > 0) return elements;
       } catch {
         // Invalid selector, skip

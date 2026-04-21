@@ -4,7 +4,7 @@ let currentSettings = null;
 
 async function loadSettings() {
   const data = await chrome.storage.sync.get(STORAGE_KEY);
-  currentSettings = data[STORAGE_KEY] || DEFAULT_SETTINGS;
+  currentSettings = normalizeSettings(data[STORAGE_KEY]);
   applyToUI(currentSettings);
   buildSiteOverrides(currentSettings);
 }
@@ -32,6 +32,7 @@ function buildSiteOverrides(settings) {
     const siteName = SITE_NAMES[siteId] || siteId;
     const override = settings.siteOverrides?.[siteId] || {};
     const isOverridden = !!settings.siteOverrides?.[siteId];
+    const siteEnabled = override.enabled !== false;
 
     const card = document.createElement('div');
     card.className = 'site-card';
@@ -46,6 +47,13 @@ function buildSiteOverrides(settings) {
         </label>
       </div>
       <div class="site-override-fields" style="${isOverridden ? '' : 'display:none; opacity:0.5; pointer-events:none;'}">
+        <div class="site-card-row">
+          <label>Enabled on site</label>
+          <label class="toggle small">
+            <input type="checkbox" class="site-enabled-toggle" ${siteEnabled ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
         <div class="site-card-row">
           <label>Max messages</label>
           <div class="range-group">
@@ -66,6 +74,7 @@ function buildSiteOverrides(settings) {
 
     const toggle = card.querySelector('.site-override-toggle');
     const fields = card.querySelector('.site-override-fields');
+    const siteEnabledToggle = card.querySelector('.site-enabled-toggle');
     const maxInput = card.querySelector('.site-max-messages');
     const maxValue = card.querySelector('.site-max-value');
     const trimSelect = card.querySelector('.site-trim-mode');
@@ -79,6 +88,7 @@ function buildSiteOverrides(settings) {
         maxInput.value = settings.maxMessages;
         maxValue.textContent = settings.maxMessages;
         trimSelect.value = settings.trimMode;
+        siteEnabledToggle.checked = true;
       }
       saveSettings();
     });
@@ -86,6 +96,7 @@ function buildSiteOverrides(settings) {
     maxInput.addEventListener('input', (e) => {
       maxValue.textContent = e.target.value;
     });
+    siteEnabledToggle.addEventListener('change', saveSettings);
     maxInput.addEventListener('change', saveSettings);
     trimSelect.addEventListener('change', saveSettings);
 
@@ -101,7 +112,7 @@ async function saveSettings() {
     const toggle = card.querySelector('.site-override-toggle');
     if (toggle.checked) {
       siteOverrides[siteId] = {
-        enabled: true,
+        enabled: card.querySelector('.site-enabled-toggle').checked,
         maxMessages: parseInt(card.querySelector('.site-max-messages').value, 10),
         trimMode: card.querySelector('.site-trim-mode').value
       };
@@ -125,7 +136,7 @@ async function saveSettings() {
     try {
       await chrome.tabs.sendMessage(tabs[0].id, {
         type: MESSAGES.SETTINGS_UPDATED,
-        settings: currentSettings
+        settings: normalizeSettings(currentSettings)
       });
     } catch {
       // Tab may not have content script injected
@@ -143,7 +154,7 @@ function showStatus(text) {
 async function refreshStats() {
   try {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.GET_STATS });
-    if (response) {
+    if (response && response.success !== false) {
       $('domNodes').textContent = response.domNodes || '--';
       $('trimmedCount').textContent = response.trimmedCount || '--';
       $('currentSite').textContent = response.siteId || '--';
@@ -194,7 +205,8 @@ $('siteOverridesToggle').addEventListener('click', () => {
 
 $('forceCleanup').addEventListener('click', async () => {
   try {
-    await chrome.runtime.sendMessage({ type: MESSAGES.FORCE_CLEANUP });
+    const response = await chrome.runtime.sendMessage({ type: MESSAGES.FORCE_CLEANUP });
+    if (response?.success === false) throw new Error(response.error);
     showStatus('Cleanup performed');
     setTimeout(refreshStats, 500);
   } catch {
@@ -204,7 +216,8 @@ $('forceCleanup').addEventListener('click', async () => {
 
 $('restoreAll').addEventListener('click', async () => {
   try {
-    await chrome.runtime.sendMessage({ type: MESSAGES.RESTORE_ALL });
+    const response = await chrome.runtime.sendMessage({ type: MESSAGES.RESTORE_ALL });
+    if (response?.success === false) throw new Error(response.error);
     showStatus('All messages restored');
     setTimeout(refreshStats, 500);
   } catch {

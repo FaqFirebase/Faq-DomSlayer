@@ -55,7 +55,21 @@ global.MutationObserver = class {
 // ---------------------------------------------------------------------------
 // Load modules under test
 // ---------------------------------------------------------------------------
-const { DEFAULT_SETTINGS, DEFAULT_SITE_OVERRIDE, TRIM_MODES, SITE_IDS, SITE_NAMES, MESSAGES, SELECTORS } = require('../utils/constants.js');
+const {
+  DEFAULT_SETTINGS,
+  DEFAULT_SITE_OVERRIDE,
+  TRIM_MODES,
+  SITE_IDS,
+  SITE_NAMES,
+  MESSAGES,
+  SELECTORS,
+  PLACEHOLDER_GROUP_MIN_SIZE,
+  PLACEHOLDER_PREVIEW_LENGTH,
+  PLACEHOLDER_GROUP_PREVIEW_LENGTH,
+  detectSiteFromHostname,
+  getSiteSettings,
+  normalizeSettings
+} = require('../utils/constants.js');
 
 // Inject constants into global scope so site adapters can access them
 global.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
@@ -64,6 +78,9 @@ global.SITE_IDS = SITE_IDS;
 global.SITE_NAMES = SITE_NAMES;
 global.MESSAGES = MESSAGES;
 global.SELECTORS = SELECTORS;
+global.PLACEHOLDER_GROUP_MIN_SIZE = PLACEHOLDER_GROUP_MIN_SIZE;
+global.PLACEHOLDER_PREVIEW_LENGTH = PLACEHOLDER_PREVIEW_LENGTH;
+global.PLACEHOLDER_GROUP_PREVIEW_LENGTH = PLACEHOLDER_GROUP_PREVIEW_LENGTH;
 
 const { ChatGPTAdapter } = require('../content/sites/chatgpt.js');
 const { GeminiAdapter } = require('../content/sites/gemini.js');
@@ -108,22 +125,7 @@ function testSiteDetectionLogic() {
   ];
 
   for (const { hostname, expected } of testCases) {
-    // Replicate detectSite logic
-    const SITE_URL_MAP = {
-      'chatgpt.com': SITE_IDS.CHATGPT,
-      'gemini.google.com': SITE_IDS.GEMINI,
-      'aistudio.google.com': SITE_IDS.GEMINI,
-      'claude.ai': SITE_IDS.CLAUDE,
-      'perplexity.ai': SITE_IDS.PERPLEXITY,
-      'copilot.microsoft.com': SITE_IDS.COPILOT
-    };
-
-    let result = SITE_URL_MAP[hostname] || null;
-    if (!result && hostname.endsWith('.chatgpt.com')) result = SITE_IDS.CHATGPT;
-    if (!result && hostname.endsWith('.claude.ai')) result = SITE_IDS.CLAUDE;
-    if (!result && hostname.endsWith('.perplexity.ai')) result = SITE_IDS.PERPLEXITY;
-
-    assert.strictEqual(result, expected, `Expected ${expected} for ${hostname}`);
+    assert.strictEqual(detectSiteFromHostname(hostname), expected, `Expected ${expected} for ${hostname}`);
   }
 }
 
@@ -135,7 +137,7 @@ function testSettingsMerging() {
 
   // No override
   const noOverride = { ...baseSettings, siteOverrides: {} };
-  const merged1 = { ...noOverride, ...(noOverride.siteOverrides.chatgpt || {}) };
+  const merged1 = getSiteSettings(noOverride, SITE_IDS.CHATGPT);
   assert.strictEqual(merged1.maxMessages, 15);
   assert.strictEqual(merged1.trimMode, 'placeholder');
 
@@ -146,7 +148,7 @@ function testSettingsMerging() {
       chatgpt: { maxMessages: 25, trimMode: 'collapse' }
     }
   };
-  const merged2 = { ...withOverride, ...(withOverride.siteOverrides.chatgpt || {}) };
+  const merged2 = getSiteSettings(withOverride, SITE_IDS.CHATGPT);
   assert.strictEqual(merged2.maxMessages, 25);
   assert.strictEqual(merged2.trimMode, 'collapse');
   assert.strictEqual(merged2.enabled, true); // base preserved
@@ -158,9 +160,18 @@ function testSettingsMerging() {
       claude: { maxMessages: 5 }
     }
   };
-  const merged3 = { ...partialOverride, ...(partialOverride.siteOverrides.claude || {}) };
+  const merged3 = getSiteSettings(partialOverride, SITE_IDS.CLAUDE);
   assert.strictEqual(merged3.maxMessages, 5);
   assert.strictEqual(merged3.trimMode, 'placeholder'); // base preserved
+
+  const disabledOverride = getSiteSettings({
+    ...baseSettings,
+    siteOverrides: {
+      perplexity: { enabled: false, maxMessages: 20, trimMode: 'remove' }
+    }
+  }, SITE_IDS.PERPLEXITY);
+  assert.strictEqual(disabledOverride.enabled, false);
+  assert.strictEqual(disabledOverride.maxMessages, 20);
 }
 
 function testDefaultSiteOverrideShape() {
@@ -168,6 +179,28 @@ function testDefaultSiteOverrideShape() {
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.enabled, 'boolean');
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.maxMessages, 'number');
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.trimMode, 'string');
+}
+
+function testNormalizeSettings() {
+  const normalizedEmpty = normalizeSettings(null);
+  assert.strictEqual(normalizedEmpty.enabled, DEFAULT_SETTINGS.enabled);
+  assert.deepStrictEqual(normalizedEmpty.siteOverrides, {});
+
+  const normalizedPartial = normalizeSettings({
+    maxMessages: 30,
+    trimMode: 'bad-mode',
+    siteOverrides: {
+      chatgpt: { enabled: false, maxMessages: 7, trimMode: TRIM_MODES.COLLAPSE },
+      unknown: { enabled: false }
+    }
+  });
+
+  assert.strictEqual(normalizedPartial.maxMessages, 30);
+  assert.strictEqual(normalizedPartial.trimMode, DEFAULT_SETTINGS.trimMode);
+  assert.strictEqual(normalizedPartial.siteOverrides.chatgpt.enabled, false);
+  assert.strictEqual(normalizedPartial.siteOverrides.chatgpt.maxMessages, 7);
+  assert.strictEqual(normalizedPartial.siteOverrides.chatgpt.trimMode, TRIM_MODES.COLLAPSE);
+  assert.strictEqual(normalizedPartial.siteOverrides.unknown, undefined);
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +244,108 @@ function testDomTrimmerPlaceholderMode() {
   trimmer.trimElement(mockEl, TRIM_MODES.PLACEHOLDER);
   assert.strictEqual(replaced, true, 'Placeholder mode should replace element');
   assert.strictEqual(trimmer.trimmedCount, 1);
+}
+
+function testDomTrimmerGroupsLargePlaceholderBatches() {
+  const originalCreateElement = document.createElement;
+  document.createElement = (tag) => {
+    const element = originalCreateElement(tag);
+    if (tag === 'div') {
+      element.firstElementChild = {
+        removeAttribute: () => {},
+        classList: { remove: () => {} }
+      };
+    }
+    return element;
+  };
+
+  const parent = {
+    inserted: [],
+    insertBefore: function(child, referenceNode) {
+      child.parentNode = this;
+      this.inserted.push({ child, referenceNode });
+      return child;
+    }
+  };
+  const elements = Array.from({ length: PLACEHOLDER_GROUP_MIN_SIZE + 2 }, (_, index) => ({
+    hasAttribute: () => false,
+    parentNode: parent,
+    nextSibling: null,
+    outerHTML: `<div>Message ${index}</div>`,
+    textContent: `Message ${index}`,
+    cloneNode: function() { return { querySelectorAll: () => [], textContent: this.textContent }; },
+    remove: function() { this.removed = true; }
+  }));
+
+  const adapter = new ChatGPTAdapter();
+  const settings = { enabled: true, maxMessages: 1, trimMode: TRIM_MODES.PLACEHOLDER };
+  const trimmer = new DomTrimmer(adapter, settings);
+
+  try {
+    trimmer.placeholderElements(elements);
+
+    assert.strictEqual(parent.inserted.length, 1, 'Large batches should create one grouped placeholder');
+    assert.strictEqual(trimmer.trimmedCount, elements.length);
+    assert.ok(parent.inserted[0].child.textContent.includes(`${elements.length} trimmed messages`));
+    assert.ok(elements.every(el => el.removed), 'Grouped source elements should be removed');
+  } finally {
+    document.createElement = originalCreateElement;
+  }
+}
+
+function testDomTrimmerRestoresGroupedPlaceholderInOrder() {
+  const originalCreateElement = document.createElement;
+  document.createElement = (tag) => {
+    const element = originalCreateElement(tag);
+    if (tag === 'div') {
+      element.firstElementChild = {
+        restoredIndex: null,
+        removeAttribute: () => {},
+        classList: { remove: () => {} }
+      };
+      Object.defineProperty(element, 'innerHTML', {
+        set(value) {
+          const match = value.match(/Message (\d+)/);
+          this.firstElementChild.restoredIndex = match ? Number(match[1]) : null;
+        }
+      });
+    }
+    return element;
+  };
+
+  const parent = {
+    restored: [],
+    insertBefore: function(child, referenceNode) {
+      child.parentNode = this;
+      this.restored.push({ child, referenceNode });
+      return child;
+    }
+  };
+  const elements = Array.from({ length: PLACEHOLDER_GROUP_MIN_SIZE }, (_, index) => ({
+    hasAttribute: () => false,
+    parentNode: parent,
+    nextSibling: null,
+    outerHTML: `<div>Message ${index}</div>`,
+    textContent: `Message ${index}`,
+    cloneNode: function() { return { querySelectorAll: () => [], textContent: this.textContent }; },
+    remove: function() { this.removed = true; }
+  }));
+
+  const adapter = new ChatGPTAdapter();
+  const settings = { enabled: true, maxMessages: 1, trimMode: TRIM_MODES.PLACEHOLDER };
+  const trimmer = new DomTrimmer(adapter, settings);
+
+  try {
+    trimmer.placeholderElements(elements);
+    const placeholder = parent.restored[0].child;
+    parent.restored = [];
+    placeholder._restore();
+
+    assert.deepStrictEqual(parent.restored.map(entry => entry.child.restoredIndex), [0, 1, 2]);
+    assert.strictEqual(trimmer.trimmedCount, 0);
+  } finally {
+    document.createElement = originalCreateElement;
+  }
 }
 
 function testDomTrimmerCollapseMode() {
@@ -291,6 +426,59 @@ function testDomTrimmerRestoreAll() {
   document.querySelectorAll = originalQSA;
 }
 
+function testDomTrimmerPlaceholderRestoreUsesPlaceholderParent() {
+  const originalCreateElement = document.createElement;
+  document.createElement = (tag) => {
+    if (tag === 'div') {
+      const element = originalCreateElement(tag);
+      element.firstElementChild = {
+        inserted: false,
+        removeAttribute: () => {},
+        classList: { remove: () => {} }
+      };
+      return element;
+    }
+    return originalCreateElement(tag);
+  };
+
+  const adapter = new ChatGPTAdapter();
+  const settings = { enabled: true, maxMessages: 1, trimMode: TRIM_MODES.PLACEHOLDER };
+  const trimmer = new DomTrimmer(adapter, settings);
+
+  let placeholderNode = null;
+  const fallbackParent = {
+    insertBefore: (restored, referenceNode) => {
+      assert.strictEqual(referenceNode, placeholderNode);
+      restored.inserted = true;
+    }
+  };
+  const originalParent = {
+    insertBefore: () => { throw new Error('Should not use stale original parent'); },
+    appendChild: () => { throw new Error('Should not append to stale original parent'); }
+  };
+  const mockEl = {
+    hasAttribute: () => false,
+    parentNode: originalParent,
+    nextSibling: { parentNode: null },
+    outerHTML: '<div>restored</div>',
+    textContent: 'Restorable message',
+    cloneNode: () => ({ querySelectorAll: () => [], textContent: 'Restorable message' }),
+    replaceWith: function(placeholder) {
+      placeholderNode = placeholder;
+      placeholder.parentNode = fallbackParent;
+    }
+  };
+
+  try {
+    trimmer.trimElement(mockEl, TRIM_MODES.PLACEHOLDER);
+    assert.ok(placeholderNode._restore, 'Placeholder should expose restore handler');
+    placeholderNode._restore();
+    assert.strictEqual(trimmer.trimmedCount, 0);
+  } finally {
+    document.createElement = originalCreateElement;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Test Runner
 // ---------------------------------------------------------------------------
@@ -300,12 +488,16 @@ function runTests() {
     { name: 'siteDetectionLogic', fn: testSiteDetectionLogic },
     { name: 'settingsMerging', fn: testSettingsMerging },
     { name: 'defaultSiteOverrideShape', fn: testDefaultSiteOverrideShape },
+    { name: 'normalizeSettings', fn: testNormalizeSettings },
     { name: 'domTrimmerInitialization', fn: testDomTrimmerInitialization },
     { name: 'domTrimmerPlaceholderMode', fn: testDomTrimmerPlaceholderMode },
+    { name: 'domTrimmerGroupsLargePlaceholderBatches', fn: testDomTrimmerGroupsLargePlaceholderBatches },
+    { name: 'domTrimmerRestoresGroupedPlaceholderInOrder', fn: testDomTrimmerRestoresGroupedPlaceholderInOrder },
     { name: 'domTrimmerCollapseMode', fn: testDomTrimmerCollapseMode },
     { name: 'domTrimmerRemoveMode', fn: testDomTrimmerRemoveMode },
     { name: 'domTrimmerStats', fn: testDomTrimmerStats },
-    { name: 'domTrimmerRestoreAll', fn: testDomTrimmerRestoreAll }
+    { name: 'domTrimmerRestoreAll', fn: testDomTrimmerRestoreAll },
+    { name: 'domTrimmerPlaceholderRestoreUsesPlaceholderParent', fn: testDomTrimmerPlaceholderRestoreUsesPlaceholderParent }
   ];
 
   let passed = 0;

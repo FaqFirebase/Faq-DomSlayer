@@ -13,6 +13,7 @@ class GeminiAdapter {
   }
 
   getMessageContainers() {
+    const root = this.getChatContainer() || document;
     const selectors = [
       'message-content',
       '[class*="message-container"]',
@@ -21,13 +22,12 @@ class GeminiAdapter {
       '.conversation-turn',
       '[data-content-type]',
       'user-query, model-response',
-      '[class*="turn"]',
-      'div[class*="query"], div[class*="response"]'
+      '[class*="turn"]'
     ];
 
     for (const selector of selectors) {
       try {
-        const elements = document.querySelectorAll(selector);
+        const elements = root.querySelectorAll(selector);
         if (elements.length > 0) return elements;
       } catch {
         // Invalid selector, skip

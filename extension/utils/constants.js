@@ -1,11 +1,17 @@
 const STORAGE_KEY = 'aico_settings';
+const MANIFEST_VERSION = 3;
+const DEFAULT_CLEANUP_INTERVAL_MS = 30000;
+const DEFAULT_MAX_MESSAGES = 15;
+const PLACEHOLDER_GROUP_MIN_SIZE = 3;
+const PLACEHOLDER_PREVIEW_LENGTH = 80;
+const PLACEHOLDER_GROUP_PREVIEW_LENGTH = 60;
 
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: true,
-  maxMessages: 15,
+  maxMessages: DEFAULT_MAX_MESSAGES,
   trimMode: 'placeholder',
   enableObserverCleanup: true,
-  cleanupIntervalMs: 30000,
+  cleanupIntervalMs: DEFAULT_CLEANUP_INTERVAL_MS,
   enableMemoryMonitor: false,
   debugMode: false,
   siteOverrides: {}
@@ -13,7 +19,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 
 const DEFAULT_SITE_OVERRIDE = Object.freeze({
   enabled: true,
-  maxMessages: 15,
+  maxMessages: DEFAULT_MAX_MESSAGES,
   trimMode: 'placeholder'
 });
 
@@ -48,6 +54,12 @@ const SITE_URL_MAP = Object.freeze({
   'copilot.microsoft.com': SITE_IDS.COPILOT
 });
 
+const WILDCARD_SITE_SUFFIXES = Object.freeze({
+  '.chatgpt.com': SITE_IDS.CHATGPT,
+  '.claude.ai': SITE_IDS.CLAUDE,
+  '.perplexity.ai': SITE_IDS.PERPLEXITY
+});
+
 const MESSAGES = Object.freeze({
   SETTINGS_UPDATED: 'SETTINGS_UPDATED',
   GET_STATS: 'GET_STATS',
@@ -60,6 +72,83 @@ const SELECTORS = Object.freeze({
   PLACEHOLDER_ATTR: 'data-aico-trimmed'
 });
 
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeSiteOverride(override) {
+  const source = isObject(override) ? override : {};
+  return {
+    enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SITE_OVERRIDE.enabled,
+    maxMessages: Number.isInteger(source.maxMessages) ? source.maxMessages : DEFAULT_SITE_OVERRIDE.maxMessages,
+    trimMode: Object.values(TRIM_MODES).includes(source.trimMode) ? source.trimMode : DEFAULT_SITE_OVERRIDE.trimMode
+  };
+}
+
+function normalizeSettings(settings) {
+  const source = isObject(settings) ? settings : {};
+  const siteOverrides = {};
+  const rawOverrides = isObject(source.siteOverrides) ? source.siteOverrides : {};
+
+  for (const siteId of Object.values(SITE_IDS)) {
+    if (isObject(rawOverrides[siteId])) {
+      siteOverrides[siteId] = normalizeSiteOverride(rawOverrides[siteId]);
+    }
+  }
+
+  return {
+    enabled: typeof source.enabled === 'boolean' ? source.enabled : DEFAULT_SETTINGS.enabled,
+    maxMessages: Number.isInteger(source.maxMessages) ? source.maxMessages : DEFAULT_SETTINGS.maxMessages,
+    trimMode: Object.values(TRIM_MODES).includes(source.trimMode) ? source.trimMode : DEFAULT_SETTINGS.trimMode,
+    enableObserverCleanup: typeof source.enableObserverCleanup === 'boolean' ? source.enableObserverCleanup : DEFAULT_SETTINGS.enableObserverCleanup,
+    cleanupIntervalMs: Number.isInteger(source.cleanupIntervalMs) ? source.cleanupIntervalMs : DEFAULT_SETTINGS.cleanupIntervalMs,
+    enableMemoryMonitor: typeof source.enableMemoryMonitor === 'boolean' ? source.enableMemoryMonitor : DEFAULT_SETTINGS.enableMemoryMonitor,
+    debugMode: typeof source.debugMode === 'boolean' ? source.debugMode : DEFAULT_SETTINGS.debugMode,
+    siteOverrides
+  };
+}
+
+function getSiteSettings(settings, siteId) {
+  const normalizedSettings = normalizeSettings(settings);
+  const overrides = normalizedSettings.siteOverrides[siteId] || {};
+  return { ...normalizedSettings, ...overrides };
+}
+
+function detectSiteFromHostname(hostname) {
+  if (SITE_URL_MAP[hostname]) {
+    return SITE_URL_MAP[hostname];
+  }
+
+  for (const [suffix, siteId] of Object.entries(WILDCARD_SITE_SUFFIXES)) {
+    if (hostname.endsWith(suffix)) {
+      return siteId;
+    }
+  }
+
+  return null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { DEFAULT_SETTINGS, DEFAULT_SITE_OVERRIDE, TRIM_MODES, SITE_IDS, SITE_NAMES, SITE_URL_MAP, MESSAGES, SELECTORS };
+  module.exports = {
+    STORAGE_KEY,
+    MANIFEST_VERSION,
+    DEFAULT_CLEANUP_INTERVAL_MS,
+    DEFAULT_MAX_MESSAGES,
+    PLACEHOLDER_GROUP_MIN_SIZE,
+    PLACEHOLDER_PREVIEW_LENGTH,
+    PLACEHOLDER_GROUP_PREVIEW_LENGTH,
+    DEFAULT_SETTINGS,
+    DEFAULT_SITE_OVERRIDE,
+    TRIM_MODES,
+    SITE_IDS,
+    SITE_NAMES,
+    SITE_URL_MAP,
+    WILDCARD_SITE_SUFFIXES,
+    MESSAGES,
+    SELECTORS,
+    normalizeSettings,
+    normalizeSiteOverride,
+    getSiteSettings,
+    detectSiteFromHostname
+  };
 }

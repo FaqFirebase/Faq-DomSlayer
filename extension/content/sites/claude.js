@@ -13,6 +13,7 @@ class ClaudeAdapter {
   }
 
   getMessageContainers() {
+    const root = this.getChatContainer() || document;
     const selectors = [
       '[data-testid="chat-message"]',
       '[class*="font-user-message"]',
@@ -20,13 +21,12 @@ class ClaudeAdapter {
       '.message-content',
       '[class*="message-wrapper"]',
       'div[class*="group"][data-testid]',
-      '[class*="chat-message"]',
-      'div[class*="message"]'
+      '[class*="chat-message"]'
     ];
 
     for (const selector of selectors) {
       try {
-        const elements = document.querySelectorAll(selector);
+        const elements = root.querySelectorAll(selector);
         if (elements.length > 0) return elements;
       } catch {
         // Invalid selector, skip

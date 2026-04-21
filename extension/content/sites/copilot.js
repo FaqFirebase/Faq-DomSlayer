@@ -13,20 +13,20 @@ class CopilotAdapter {
   }
 
   getMessageContainers() {
+    const root = this.getChatContainer() || document;
     const selectors = [
       '[class*="response-message-group"]',
       '[class*="user-message"]',
       'cib-message',
       '[class*="message-content"]',
       '[class*="turn"]',
-      '.ac-textBlock',
       'cib-message-group',
       '[class*="message-group"]'
     ];
 
     for (const selector of selectors) {
       try {
-        const elements = document.querySelectorAll(selector);
+        const elements = root.querySelectorAll(selector);
         if (elements.length > 0) return elements;
       } catch {
         // Invalid selector, skip

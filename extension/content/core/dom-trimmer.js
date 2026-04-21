@@ -11,7 +11,6 @@ class DomTrimmer {
 
   updateSettings(settings) {
     this.settings = settings;
-    this.debug = settings.debugMode ? (window.__aico?.debug || this.debug) : { log: () => {}, warn: () => {}, error: () => {}, info: () => {} };
     if (settings.enabled) {
       this.startObserving();
       this.performTrim();
@@ -71,6 +70,11 @@ class DomTrimmer {
 
     this.debug.info(`Trimming ${toTrim.length} messages`);
 
+    if (trimMode === TRIM_MODES.PLACEHOLDER) {
+      this.placeholderElements(toTrim);
+      return;
+    }
+
     for (const el of toTrim) {
       if (el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR)) continue;
       this.trimElement(el, trimMode);
@@ -93,31 +97,67 @@ class DomTrimmer {
     this.trimmedCount++;
   }
 
-  placeholderElement(el) {
-    const textContent = this.extractPreviewText(el);
+  placeholderElements(elements) {
+    const chunks = this.groupElementsByParent(elements.filter(el => el.parentNode && !el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR)));
+
+    for (const chunk of chunks) {
+      if (chunk.length >= PLACEHOLDER_GROUP_MIN_SIZE) {
+        this.placeholderGroupElements(chunk);
+      } else {
+        for (const el of chunk) {
+          this.placeholderElement(el);
+          this.trimmedCount++;
+        }
+      }
+    }
+  }
+
+  groupElementsByParent(elements) {
+    const chunks = [];
+    let currentChunk = [];
+    let currentParent = null;
+
+    for (const el of elements) {
+      if (currentChunk.length > 0 && el.parentNode !== currentParent) {
+        chunks.push(currentChunk);
+        currentChunk = [];
+      }
+
+      currentParent = el.parentNode;
+      currentChunk.push(el);
+    }
+
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk);
+    }
+
+    return chunks;
+  }
+
+  createPlaceholder(textContent, title) {
     const placeholder = document.createElement('div');
     placeholder.className = SELECTORS.PLACEHOLDER_CLASS;
     placeholder.setAttribute(SELECTORS.PLACEHOLDER_ATTR, 'true');
     placeholder.style.cssText = 'padding:8px 12px;margin:4px 0;color:#8888a0;font-size:12px;border-left:3px solid #3a3a4e;background:#1e1e30;border-radius:4px;cursor:pointer;transition:background 0.15s;';
-    placeholder.textContent = `[#${this.trimmedCount + 1}] ${textContent}`;
-    placeholder.title = 'Click to restore this message';
+    placeholder.textContent = textContent;
+    placeholder.title = title;
+    return placeholder;
+  }
+
+  placeholderElement(el) {
+    const textContent = this.extractPreviewText(el);
+    const placeholder = this.createPlaceholder(
+      `[#${this.trimmedCount + 1}] ${textContent}`,
+      'Click to restore this message'
+    );
 
     const originalHTML = el.outerHTML;
     const originalParent = el.parentNode;
     const nextSibling = el.nextSibling;
 
     placeholder._restore = () => {
-      const temp = document.createElement('div');
-      temp.innerHTML = originalHTML;
-      const restored = temp.firstElementChild;
+      const restored = this.restoreHtml(originalHTML, originalParent, nextSibling, placeholder);
       if (restored) {
-        restored.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
-        restored.classList.remove(SELECTORS.PLACEHOLDER_CLASS);
-        if (nextSibling) {
-          originalParent.insertBefore(restored, nextSibling);
-        } else {
-          originalParent.appendChild(restored);
-        }
         placeholder.remove();
         this.trimmedCount = Math.max(0, this.trimmedCount - 1);
       }
@@ -132,8 +172,63 @@ class DomTrimmer {
     el.replaceWith(placeholder);
   }
 
+  placeholderGroupElements(elements) {
+    const first = elements[0];
+    const entries = elements.map(el => ({
+      originalHTML: el.outerHTML,
+      originalParent: el.parentNode
+    }));
+    const firstPreview = this.extractPreviewText(elements[0], PLACEHOLDER_GROUP_PREVIEW_LENGTH);
+    const lastPreview = this.extractPreviewText(elements[elements.length - 1], PLACEHOLDER_GROUP_PREVIEW_LENGTH);
+    const placeholder = this.createPlaceholder(
+      `[${elements.length} trimmed messages] ${firstPreview} ... ${lastPreview}`,
+      'Click to restore this group of messages'
+    );
+
+    placeholder._restore = () => {
+      for (const entry of entries) {
+        this.restoreHtml(entry.originalHTML, entry.originalParent, placeholder, placeholder);
+      }
+      placeholder.remove();
+      this.trimmedCount = Math.max(0, this.trimmedCount - entries.length);
+    };
+
+    placeholder.addEventListener('click', () => {
+      this.isRestoring = true;
+      placeholder._restore();
+      this.isRestoring = false;
+    });
+
+    first.parentNode.insertBefore(placeholder, first);
+    for (const el of elements) {
+      el.remove();
+    }
+    this.trimmedCount += elements.length;
+  }
+
+  restoreHtml(originalHTML, originalParent, nextSibling, placeholder) {
+    const temp = document.createElement('div');
+    temp.innerHTML = originalHTML;
+    const restored = temp.firstElementChild;
+    if (!restored) return null;
+
+    restored.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
+    restored.classList.remove(SELECTORS.PLACEHOLDER_CLASS);
+    const fallbackParent = placeholder.parentNode || originalParent;
+    if (!fallbackParent) return null;
+
+    if (nextSibling && nextSibling.parentNode === fallbackParent) {
+      fallbackParent.insertBefore(restored, nextSibling);
+    } else if (placeholder.parentNode === fallbackParent) {
+      fallbackParent.insertBefore(restored, placeholder);
+    } else {
+      fallbackParent.appendChild(restored);
+    }
+
+    return restored;
+  }
+
   collapseElement(el) {
-    const preview = this.extractPreviewText(el);
     const originalHeight = el.scrollHeight;
     el.setAttribute(SELECTORS.PLACEHOLDER_ATTR, 'true');
     el.style.cssText = `max-height:40px;overflow:hidden;opacity:0.5;cursor:pointer;`;
@@ -154,11 +249,11 @@ class DomTrimmer {
     el.remove();
   }
 
-  extractPreviewText(el) {
+  extractPreviewText(el, maxLength = PLACEHOLDER_PREVIEW_LENGTH) {
     const clone = el.cloneNode(true);
     clone.querySelectorAll('code, pre, script, style, button, svg').forEach(n => n.remove());
     const text = (clone.textContent || '').trim().replace(/\s+/g, ' ');
-    return text.length > 60 ? text.substring(0, 60) + '...' : text || '[message]';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text || '[message]';
   }
 
   cleanupNodeListeners(el) {

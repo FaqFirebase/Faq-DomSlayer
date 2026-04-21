@@ -1,22 +1,5 @@
 function detectSite() {
-  const hostname = window.location.hostname;
-  if (SITE_URL_MAP[hostname]) {
-    return SITE_URL_MAP[hostname];
-  }
-
-  if (hostname.endsWith('.chatgpt.com')) {
-    return SITE_IDS.CHATGPT;
-  }
-
-  if (hostname.endsWith('.claude.ai')) {
-    return SITE_IDS.CLAUDE;
-  }
-
-  if (hostname.endsWith('.perplexity.ai')) {
-    return SITE_IDS.PERPLEXITY;
-  }
-
-  return null;
+  return detectSiteFromHostname(window.location.hostname);
 }
 
 function createAdapter(siteId) {
@@ -38,21 +21,18 @@ function createAdapter(siteId) {
 
 async function getSettings() {
   const data = await chrome.storage.sync.get(STORAGE_KEY);
-  return data[STORAGE_KEY] || DEFAULT_SETTINGS;
-}
-
-function getSiteSettings(settings, siteId) {
-  const overrides = settings.siteOverrides[siteId] || {};
-  return { ...settings, ...overrides };
+  return normalizeSettings(data[STORAGE_KEY]);
 }
 
 function createDebugLogger(siteId, enabled) {
   const prefix = `[AICO:${SITE_NAMES[siteId] || siteId}]`;
+  const state = { enabled: !!enabled };
   return {
-    log: (...args) => { if (enabled) console.log(prefix, ...args); },
-    warn: (...args) => { if (enabled) console.warn(prefix, ...args); },
-    error: (...args) => { if (enabled) console.error(prefix, ...args); },
-    info: (...args) => { if (enabled) console.info(prefix, ...args); }
+    setEnabled: (nextEnabled) => { state.enabled = !!nextEnabled; },
+    log: (...args) => { if (state.enabled) console.log(prefix, ...args); },
+    warn: (...args) => { if (state.enabled) console.warn(prefix, ...args); },
+    error: (...args) => { if (state.enabled) console.error(prefix, ...args); },
+    info: (...args) => { if (state.enabled) console.info(prefix, ...args); }
   };
 }
 
@@ -105,6 +85,7 @@ async function init() {
     switch (message.type) {
       case MESSAGES.SETTINGS_UPDATED: {
         settings = getSiteSettings(message.settings, siteId);
+        debug.setEnabled(settings.debugMode);
         debug.log('Settings updated', settings);
         trimmer.updateSettings(settings);
         observerCleaner.updateSettings(settings);
@@ -145,6 +126,7 @@ async function init() {
     if (area === 'sync' && changes[STORAGE_KEY]) {
       const newSettings = changes[STORAGE_KEY].newValue;
       settings = getSiteSettings(newSettings, siteId);
+      debug.setEnabled(settings.debugMode);
       debug.log('Storage changed, updating settings');
       trimmer.updateSettings(settings);
       observerCleaner.updateSettings(settings);
