@@ -1,6 +1,7 @@
 const $ = (id) => document.getElementById(id);
 
 let currentSettings = null;
+let refreshInterval = null;
 
 async function loadSettings() {
   const data = await chrome.storage.sync.get(STORAGE_KEY);
@@ -37,49 +38,103 @@ function buildSiteOverrides(settings) {
     card.className = 'site-card';
     card.dataset.siteId = siteId;
 
-    card.innerHTML = `
-      <div class="site-card-header">
-        <span>${siteName}</span>
-        <label class="toggle small" title="Enable override">
-          <input type="checkbox" class="site-override-toggle" ${isOverridden ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="site-override-fields" style="${isOverridden ? '' : 'display:none; opacity:0.5; pointer-events:none;'}">
-        <div class="site-card-row">
-          <label>Enabled on site</label>
-          <label class="toggle small">
-            <input type="checkbox" class="site-enabled-toggle" ${siteEnabled ? 'checked' : ''}>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="site-card-row">
-          <label>Max messages</label>
-          <div class="range-group">
-            <input type="range" class="site-max-messages" min="5" max="50" value="${override.maxMessages || settings.maxMessages}">
-            <span class="site-max-value">${override.maxMessages || settings.maxMessages}</span>
-          </div>
-        </div>
-        <div class="site-card-row">
-          <label>Trim mode</label>
-          <select class="site-trim-mode">
-            <option value="placeholder" ${(override.trimMode || settings.trimMode) === 'placeholder' ? 'selected' : ''}>Placeholder</option>
-            <option value="collapse" ${(override.trimMode || settings.trimMode) === 'collapse' ? 'selected' : ''}>Collapse</option>
-            <option value="remove" ${(override.trimMode || settings.trimMode) === 'remove' ? 'selected' : ''}>Remove</option>
-          </select>
-        </div>
-      </div>
-    `;
+    const header = document.createElement('div');
+    header.className = 'site-card-header';
 
-    const toggle = card.querySelector('.site-override-toggle');
-    const fields = card.querySelector('.site-override-fields');
-    const siteEnabledToggle = card.querySelector('.site-enabled-toggle');
-    const maxInput = card.querySelector('.site-max-messages');
-    const maxValue = card.querySelector('.site-max-value');
-    const trimSelect = card.querySelector('.site-trim-mode');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = siteName;
 
-    toggle.addEventListener('change', () => {
-      const enabled = toggle.checked;
+    const overrideToggle = document.createElement('label');
+    overrideToggle.className = 'toggle small';
+    overrideToggle.title = 'Enable override';
+    const overrideInput = document.createElement('input');
+    overrideInput.type = 'checkbox';
+    overrideInput.className = 'site-override-toggle';
+    overrideInput.checked = isOverridden;
+    const overrideSlider = document.createElement('span');
+    overrideSlider.className = 'toggle-slider';
+    overrideToggle.appendChild(overrideInput);
+    overrideToggle.appendChild(overrideSlider);
+
+    header.appendChild(nameSpan);
+    header.appendChild(overrideToggle);
+
+    const fields = document.createElement('div');
+    fields.className = 'site-override-fields';
+    if (!isOverridden) {
+      fields.style.display = 'none';
+      fields.style.opacity = '0.5';
+      fields.style.pointerEvents = 'none';
+    }
+
+    const enabledRow = document.createElement('div');
+    enabledRow.className = 'site-card-row';
+    const enabledLabel = document.createElement('label');
+    enabledLabel.textContent = 'Enabled on site';
+    const enabledToggle = document.createElement('label');
+    enabledToggle.className = 'toggle small';
+    const enabledInput = document.createElement('input');
+    enabledInput.type = 'checkbox';
+    enabledInput.className = 'site-enabled-toggle';
+    enabledInput.checked = siteEnabled;
+    const enabledSlider = document.createElement('span');
+    enabledSlider.className = 'toggle-slider';
+    enabledToggle.appendChild(enabledInput);
+    enabledToggle.appendChild(enabledSlider);
+    enabledRow.appendChild(enabledLabel);
+    enabledRow.appendChild(enabledToggle);
+
+    const maxRow = document.createElement('div');
+    maxRow.className = 'site-card-row';
+    const maxLabel = document.createElement('label');
+    maxLabel.textContent = 'Max messages';
+    const maxGroup = document.createElement('div');
+    maxGroup.className = 'range-group';
+    const maxInput = document.createElement('input');
+    maxInput.type = 'range';
+    maxInput.className = 'site-max-messages';
+    maxInput.min = '5';
+    maxInput.max = '50';
+    maxInput.value = override.maxMessages || settings.maxMessages;
+    const maxValue = document.createElement('span');
+    maxValue.className = 'site-max-value';
+    maxValue.textContent = override.maxMessages || settings.maxMessages;
+    maxGroup.appendChild(maxInput);
+    maxGroup.appendChild(maxValue);
+    maxRow.appendChild(maxLabel);
+    maxRow.appendChild(maxGroup);
+
+    const trimRow = document.createElement('div');
+    trimRow.className = 'site-card-row';
+    const trimLabel = document.createElement('label');
+    trimLabel.textContent = 'Trim mode';
+    const trimSelect = document.createElement('select');
+    trimSelect.className = 'site-trim-mode';
+    const currentTrimMode = override.trimMode || settings.trimMode;
+    const modes = [
+      { value: 'placeholder', label: 'Placeholder' },
+      { value: 'collapse', label: 'Collapse' },
+      { value: 'remove', label: 'Remove' }
+    ];
+    for (const mode of modes) {
+      const opt = document.createElement('option');
+      opt.value = mode.value;
+      opt.textContent = mode.label;
+      if (mode.value === currentTrimMode) opt.selected = true;
+      trimSelect.appendChild(opt);
+    }
+    trimRow.appendChild(trimLabel);
+    trimRow.appendChild(trimSelect);
+
+    fields.appendChild(enabledRow);
+    fields.appendChild(maxRow);
+    fields.appendChild(trimRow);
+
+    card.appendChild(header);
+    card.appendChild(fields);
+
+    overrideInput.addEventListener('change', () => {
+      const enabled = overrideInput.checked;
       fields.style.display = enabled ? '' : 'none';
       fields.style.opacity = enabled ? '' : '0.5';
       fields.style.pointerEvents = enabled ? '' : 'none';
@@ -87,7 +142,7 @@ function buildSiteOverrides(settings) {
         maxInput.value = settings.maxMessages;
         maxValue.textContent = settings.maxMessages;
         trimSelect.value = settings.trimMode;
-        siteEnabledToggle.checked = true;
+        enabledInput.checked = true;
       }
       saveSettings();
     });
@@ -95,7 +150,7 @@ function buildSiteOverrides(settings) {
     maxInput.addEventListener('input', (e) => {
       maxValue.textContent = e.target.value;
     });
-    siteEnabledToggle.addEventListener('change', saveSettings);
+    enabledInput.addEventListener('change', saveSettings);
     maxInput.addEventListener('change', saveSettings);
     trimSelect.addEventListener('change', saveSettings);
 
@@ -129,16 +184,13 @@ async function saveSettings() {
 
   await chrome.storage.sync.set({ [STORAGE_KEY]: currentSettings });
 
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tabs[0]) {
-    try {
-      await chrome.tabs.sendMessage(tabs[0].id, {
-        type: MESSAGES.SETTINGS_UPDATED,
-        settings: normalizeSettings(currentSettings)
-      });
-    } catch {
-      // Tab may not have content script injected
-    }
+  try {
+    await chrome.runtime.sendMessage({
+      type: MESSAGES.SETTINGS_UPDATED,
+      settings: normalizeSettings(currentSettings)
+    });
+  } catch {
+    // Background or content script may not be available
   }
 
   showStatus('Settings saved');
@@ -153,16 +205,16 @@ async function refreshStats() {
   try {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.GET_STATS });
     if (response && response.success !== false) {
-      $('domNodes').textContent = response.domNodes || '--';
-      $('trimmedCount').textContent = response.trimmedCount || '--';
+      $('domNodes').textContent = response.domNodes != null ? response.domNodes : '--';
+      $('trimmedCount').textContent = response.trimmedCount != null ? response.trimmedCount : '--';
       $('currentSite').textContent = response.siteId || '--';
 
-      if (response.heapUsed !== undefined) {
+      if (response.heapUsed != null) {
         $('heapUsed').textContent = response.heapUsed + ' MB';
       } else {
         $('heapUsed').textContent = '--';
       }
-      if (response.heapTotal !== undefined) {
+      if (response.heapTotal != null) {
         $('heapTotal').textContent = response.heapTotal + ' MB';
       } else {
         $('heapTotal').textContent = '--';
@@ -174,6 +226,19 @@ async function refreshStats() {
     $('currentSite').textContent = '--';
     $('heapUsed').textContent = '--';
     $('heapTotal').textContent = '--';
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  refreshStats();
+  refreshInterval = setInterval(refreshStats, 2000);
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
   }
 }
 
@@ -199,7 +264,6 @@ $('forceCleanup').addEventListener('click', async () => {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.FORCE_CLEANUP });
     if (response?.success === false) throw new Error(response.error);
     showStatus('Cleanup performed');
-    setTimeout(refreshStats, 500);
   } catch {
     showStatus('Not on a supported site');
   }
@@ -210,11 +274,18 @@ $('restoreAll').addEventListener('click', async () => {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.RESTORE_ALL });
     if (response?.success === false) throw new Error(response.error);
     showStatus('All messages restored');
-    setTimeout(refreshStats, 500);
   } catch {
     showStatus('Not on a supported site');
   }
 });
 
 loadSettings();
-refreshStats();
+startAutoRefresh();
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopAutoRefresh();
+  } else {
+    startAutoRefresh();
+  }
+});

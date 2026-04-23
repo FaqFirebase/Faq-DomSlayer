@@ -25,7 +25,7 @@ class MemoryMonitor {
 
   collectStats() {
     const stats = {
-      domNodes: document.querySelectorAll('*').length,
+      domNodes: document.getElementsByTagName('*').length,
       timestamp: Date.now()
     };
 
@@ -40,19 +40,23 @@ class MemoryMonitor {
         .then(result => {
           if (result && result.bytes) {
             stats.totalMemory = Math.round(result.bytes / (1024 * 1024));
+            // Update lastStats so totalMemory is available on next getStats() call
+            if (this.lastStats) {
+              this.lastStats.totalMemory = stats.totalMemory;
+            }
           }
         })
         .catch(() => {});
     }
 
-    stats.detachedNodes = this.countDetachedNodes();
+    stats.trimmedElements = this.countTrimmedElements();
 
     this.lastStats = stats;
     this.debug.log('Memory stats', stats);
     return stats;
   }
 
-  countDetachedNodes() {
+  countTrimmedElements() {
     let count = 0;
     try {
       const elements = document.querySelectorAll('[data-aico-trimmed]');

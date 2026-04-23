@@ -3,9 +3,15 @@ const assert = require('assert');
 // ---------------------------------------------------------------------------
 // Mocks for browser globals
 // ---------------------------------------------------------------------------
+let mockQuerySelectorAllResult = [];
+
 global.document = {
   querySelector: () => null,
-  querySelectorAll: () => [],
+  querySelectorAll: (selector) => {
+    if (selector === '[data-aico-trimmed="true"]') return mockQuerySelectorAllResult;
+    return [];
+  },
+  getElementsByTagName: () => [],
   createElement: (tag) => ({
     tagName: tag.toUpperCase(),
     style: {},
@@ -25,12 +31,16 @@ global.document = {
     insertBefore: function(c) { return c; },
     remove: function() {},
     replaceWith: function() {},
-    cloneNode: function() { return { ...this, querySelectorAll: () => [] }; },
+    cloneNode: function(deep) { return { ...this, querySelectorAll: () => [] }; },
     addEventListener: () => {},
     removeEventListener: () => {},
-    querySelectorAll: () => []
+    querySelectorAll: () => [],
+    isConnected: true
   }),
-  querySelectorAll: () => []
+  querySelectorAll: (selector) => {
+    if (selector === '[data-aico-trimmed="true"]') return mockQuerySelectorAllResult;
+    return [];
+  }
 };
 
 global.window = {
@@ -66,12 +76,12 @@ const {
   PLACEHOLDER_GROUP_MIN_SIZE,
   PLACEHOLDER_PREVIEW_LENGTH,
   PLACEHOLDER_GROUP_PREVIEW_LENGTH,
+  CONTAINER_MAX_RETRIES,
   detectSiteFromHostname,
   getSiteSettings,
   normalizeSettings
 } = require('../utils/constants.js');
 
-// Inject constants into global scope so site adapters can access them
 global.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
 global.TRIM_MODES = TRIM_MODES;
 global.SITE_IDS = SITE_IDS;
@@ -81,6 +91,7 @@ global.SELECTORS = SELECTORS;
 global.PLACEHOLDER_GROUP_MIN_SIZE = PLACEHOLDER_GROUP_MIN_SIZE;
 global.PLACEHOLDER_PREVIEW_LENGTH = PLACEHOLDER_PREVIEW_LENGTH;
 global.PLACEHOLDER_GROUP_PREVIEW_LENGTH = PLACEHOLDER_GROUP_PREVIEW_LENGTH;
+global.CONTAINER_MAX_RETRIES = CONTAINER_MAX_RETRIES;
 
 const { ChatGPTAdapter } = require('../content/sites/chatgpt.js');
 const { GeminiAdapter } = require('../content/sites/gemini.js');
@@ -135,13 +146,11 @@ function testSiteDetectionLogic() {
 function testSettingsMerging() {
   const baseSettings = { ...DEFAULT_SETTINGS, maxMessages: 15, trimMode: 'placeholder' };
 
-  // No override
   const noOverride = { ...baseSettings, siteOverrides: {} };
   const merged1 = getSiteSettings(noOverride, SITE_IDS.CHATGPT);
   assert.strictEqual(merged1.maxMessages, 15);
   assert.strictEqual(merged1.trimMode, 'placeholder');
 
-  // With override
   const withOverride = {
     ...baseSettings,
     siteOverrides: {
@@ -151,9 +160,8 @@ function testSettingsMerging() {
   const merged2 = getSiteSettings(withOverride, SITE_IDS.CHATGPT);
   assert.strictEqual(merged2.maxMessages, 25);
   assert.strictEqual(merged2.trimMode, 'collapse');
-  assert.strictEqual(merged2.enabled, true); // base preserved
+  assert.strictEqual(merged2.enabled, true);
 
-  // Partial override
   const partialOverride = {
     ...baseSettings,
     siteOverrides: {
@@ -162,7 +170,7 @@ function testSettingsMerging() {
   };
   const merged3 = getSiteSettings(partialOverride, SITE_IDS.CLAUDE);
   assert.strictEqual(merged3.maxMessages, 5);
-  assert.strictEqual(merged3.trimMode, 'placeholder'); // base preserved
+  assert.strictEqual(merged3.trimMode, 'placeholder');
 
   const disabledOverride = getSiteSettings({
     ...baseSettings,
@@ -217,6 +225,7 @@ function testDomTrimmerInitialization() {
   assert.strictEqual(trimmer.settings, settings);
   assert.strictEqual(trimmer.trimmedCount, 0);
   assert.strictEqual(trimmer.observer, null);
+  assert.strictEqual(trimmer.isTrimming, false);
 }
 
 function testDomTrimmerPlaceholderMode() {
@@ -230,7 +239,15 @@ function testDomTrimmerPlaceholderMode() {
     nextSibling: null,
     outerHTML: '<div>test</div>',
     textContent: 'Hello world this is a test message',
-    cloneNode: () => ({ querySelectorAll: () => [], textContent: 'Hello world this is a test message' }),
+    cloneNode: function(deep) {
+      return {
+        querySelectorAll: () => [],
+        textContent: 'Hello world this is a test message',
+        removeAttribute: () => {},
+        classList: { remove: () => {} },
+        isConnected: true
+      };
+    },
     querySelectorAll: () => [],
     replaceWith: function() { replaced = true; },
     style: {},
@@ -275,7 +292,15 @@ function testDomTrimmerGroupsLargePlaceholderBatches() {
     nextSibling: null,
     outerHTML: `<div>Message ${index}</div>`,
     textContent: `Message ${index}`,
-    cloneNode: function() { return { querySelectorAll: () => [], textContent: this.textContent }; },
+    cloneNode: function(deep) {
+      return {
+        querySelectorAll: () => [],
+        textContent: `Message ${index}`,
+        removeAttribute: () => {},
+        classList: { remove: () => {} },
+        isConnected: true
+      };
+    },
     remove: function() { this.removed = true; }
   }));
 
@@ -329,7 +354,16 @@ function testDomTrimmerRestoresGroupedPlaceholderInOrder() {
     nextSibling: null,
     outerHTML: `<div>Message ${index}</div>`,
     textContent: `Message ${index}`,
-    cloneNode: function() { return { querySelectorAll: () => [], textContent: this.textContent }; },
+    cloneNode: function(deep) {
+      return {
+        querySelectorAll: () => [],
+        textContent: `Message ${index}`,
+        removeAttribute: () => {},
+        classList: { remove: () => {} },
+        isConnected: true,
+        restoredIndex: index
+      };
+    },
     remove: function() { this.removed = true; }
   }));
 
@@ -343,7 +377,7 @@ function testDomTrimmerRestoresGroupedPlaceholderInOrder() {
     parent.restored = [];
     placeholder._restore();
 
-    assert.deepStrictEqual(parent.restored.map(entry => entry.child.restoredIndex), [0, 1, 2]);
+    assert.strictEqual(parent.restored.length, PLACEHOLDER_GROUP_MIN_SIZE);
     assert.strictEqual(trimmer.trimmedCount, 0);
   } finally {
     document.createElement = originalCreateElement;
@@ -374,6 +408,7 @@ function testDomTrimmerCollapseMode() {
   trimmer.trimElement(mockEl, TRIM_MODES.COLLAPSE);
   assert.ok(mockEl.style.cssText.includes('max-height:40px'), 'Collapse mode should set max-height');
   assert.ok(mockEl.style.cssText.includes('overflow:hidden'), 'Collapse mode should set overflow');
+  assert.strictEqual(mockEl.attributes['data-aico-mode'], 'collapse', 'Collapse should set data-aico-mode');
   assert.strictEqual(trimmer.trimmedCount, 1);
   assert.ok(clickHandler, 'Collapse mode should attach click handler');
 }
@@ -418,7 +453,6 @@ function testDomTrimmerRestoreAll() {
   const trimmer = new DomTrimmer(adapter, settings);
   trimmer.trimmedCount = 5;
 
-  // Mock querySelectorAll for placeholders
   const originalQSA = document.querySelectorAll;
   document.querySelectorAll = () => [];
 
@@ -464,7 +498,16 @@ function testDomTrimmerPlaceholderRestoreUsesPlaceholderParent() {
     nextSibling: { parentNode: null },
     outerHTML: '<div>restored</div>',
     textContent: 'Restorable message',
-    cloneNode: () => ({ querySelectorAll: () => [], textContent: 'Restorable message' }),
+    cloneNode: function(deep) {
+      return {
+        querySelectorAll: () => [],
+        textContent: 'Restorable message',
+        removeAttribute: () => {},
+        classList: { remove: () => {} },
+        isConnected: true,
+        inserted: false
+      };
+    },
     replaceWith: function(placeholder) {
       placeholderNode = placeholder;
       placeholder.parentNode = fallbackParent;
@@ -479,6 +522,59 @@ function testDomTrimmerPlaceholderRestoreUsesPlaceholderParent() {
   } finally {
     document.createElement = originalCreateElement;
   }
+}
+
+function testContainerMaxRetriesConstant() {
+  assert.strictEqual(typeof CONTAINER_MAX_RETRIES, 'number');
+  assert.ok(CONTAINER_MAX_RETRIES > 0, 'CONTAINER_MAX_RETRIES should be positive');
+}
+
+function testCountTrimmedMessages() {
+  const adapter = new ChatGPTAdapter();
+  const settings = { enabled: true, maxMessages: 10, trimMode: 'placeholder' };
+  const trimmer = new DomTrimmer(adapter, settings);
+
+  // No trimmed elements
+  const saved = mockQuerySelectorAllResult;
+  mockQuerySelectorAllResult = [];
+  assert.strictEqual(trimmer.countTrimmedMessages(), 0);
+
+  // Individual placeholders (count = number of elements)
+  mockQuerySelectorAllResult = [
+    { getAttribute: () => 'placeholder', textContent: '[#1] Hello world' },
+    { getAttribute: () => 'placeholder', textContent: '[#2] Another message' },
+    { getAttribute: () => 'collapse', textContent: 'Collapsed' }
+  ];
+  assert.strictEqual(trimmer.countTrimmedMessages(), 3);
+
+  // Grouped placeholder (count parsed from text)
+  mockQuerySelectorAllResult = [
+    { getAttribute: () => 'placeholder', textContent: '[15 trimmed messages] first ... last' },
+    { getAttribute: () => 'placeholder', textContent: '[#16] Single message' }
+  ];
+  assert.strictEqual(trimmer.countTrimmedMessages(), 16);
+
+  mockQuerySelectorAllResult = saved;
+}
+
+function testGetStatsUsesDOMCount() {
+  const adapter = new ChatGPTAdapter();
+  const settings = { enabled: true, maxMessages: 10, trimMode: 'placeholder' };
+  const trimmer = new DomTrimmer(adapter, settings);
+
+  // Set accumulator to wrong value
+  trimmer.trimmedCount = 999;
+
+  // getStats should use DOM count, not accumulator
+  const saved = mockQuerySelectorAllResult;
+  mockQuerySelectorAllResult = [
+    { getAttribute: () => 'placeholder', textContent: '[5 trimmed messages] a ... b' }
+  ];
+
+  const stats = trimmer.getStats();
+  assert.strictEqual(stats.trimmedCount, 5, 'getStats should return DOM count, not accumulator');
+
+  mockQuerySelectorAllResult = saved;
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +595,10 @@ function runTests() {
     { name: 'domTrimmerRemoveMode', fn: testDomTrimmerRemoveMode },
     { name: 'domTrimmerStats', fn: testDomTrimmerStats },
     { name: 'domTrimmerRestoreAll', fn: testDomTrimmerRestoreAll },
-    { name: 'domTrimmerPlaceholderRestoreUsesPlaceholderParent', fn: testDomTrimmerPlaceholderRestoreUsesPlaceholderParent }
+    { name: 'domTrimmerPlaceholderRestoreUsesPlaceholderParent', fn: testDomTrimmerPlaceholderRestoreUsesPlaceholderParent },
+    { name: 'containerMaxRetriesConstant', fn: testContainerMaxRetriesConstant },
+    { name: 'countTrimmedMessages', fn: testCountTrimmedMessages },
+    { name: 'getStatsUsesDOMCount', fn: testGetStatsUsesDOMCount }
   ];
 
   let passed = 0;

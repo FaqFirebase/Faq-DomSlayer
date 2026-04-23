@@ -1,15 +1,48 @@
 class CopilotAdapter {
   constructor() {
     this.SITE_ID = 'copilot';
+    this._cachedContainer = null;
+    this._cacheObserver = null;
   }
 
-  getChatContainer() {
+  _queryContainer() {
     return document.querySelector('[class*="chat-history"]') ||
            document.querySelector('[class*="conversation"]') ||
            document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
            document.querySelector('.cib-serp-main') ||
            document.querySelector('cib-serp');
+  }
+
+  getChatContainer() {
+    if (this._cachedContainer && this._cachedContainer.isConnected) {
+      return this._cachedContainer;
+    }
+    this._invalidateContainerCache();
+    const container = this._queryContainer();
+    if (container) {
+      this._cachedContainer = container;
+      this._observeContainerRemoval(container);
+    }
+    return container;
+  }
+
+  _observeContainerRemoval(container) {
+    if (this._cacheObserver) this._cacheObserver.disconnect();
+    this._cacheObserver = new MutationObserver(() => {
+      if (!container.isConnected) {
+        this._invalidateContainerCache();
+      }
+    });
+    this._cacheObserver.observe(container.parentNode || document.body, { childList: true });
+  }
+
+  _invalidateContainerCache() {
+    this._cachedContainer = null;
+    if (this._cacheObserver) {
+      this._cacheObserver.disconnect();
+      this._cacheObserver = null;
+    }
   }
 
   getMessageContainers() {

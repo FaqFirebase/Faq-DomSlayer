@@ -15,6 +15,8 @@ Desktop.ini
 .codex/
 .claude
 .claude/
+.mcp.json
+.serena
 *.swp
 *.swo
 *~

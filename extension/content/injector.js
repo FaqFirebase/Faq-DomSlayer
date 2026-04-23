@@ -37,95 +37,105 @@ function createDebugLogger(siteId, enabled) {
 }
 
 async function init() {
-  const siteId = detectSite();
-  if (!siteId) return;
+  try {
+    const siteId = detectSite();
+    if (!siteId) return;
 
-  const adapter = createAdapter(siteId);
-  if (!adapter) return;
+    const adapter = createAdapter(siteId);
+    if (!adapter) return;
 
-  let settings = getSiteSettings(await getSettings(), siteId);
-  const debug = createDebugLogger(siteId, settings.debugMode);
+    let settings = getSiteSettings(await getSettings(), siteId);
+    const debug = createDebugLogger(siteId, settings.debugMode);
 
-  debug.info('Initializing on', window.location.hostname);
+    debug.info('Initializing on', window.location.hostname);
 
-  const trimmer = new DomTrimmer(adapter, settings, debug);
-  const memoryMonitor = new MemoryMonitor(debug);
+    const trimmer = new DomTrimmer(adapter, settings, debug);
+    const memoryMonitor = new MemoryMonitor(debug);
 
-  if (settings.enabled) {
-    const waitForContainer = () => {
-      const container = adapter.getChatContainer();
-      if (container) {
-        debug.log('Container found, starting observation');
-        trimmer.startObserving();
-        trimmer.performTrim();
-      } else {
-        debug.log('Container not found, retrying...');
-        if (typeof requestIdleCallback === 'function') {
-          requestIdleCallback(waitForContainer, { timeout: 2000 });
+    if (settings.enabled) {
+      let retryCount = 0;
+      const waitForContainer = () => {
+        const container = adapter.getChatContainer();
+        if (container) {
+          debug.log('Container found, starting observation');
+          trimmer.startObserving();
+          trimmer.performTrim();
         } else {
-          setTimeout(waitForContainer, 500);
+          retryCount++;
+          if (retryCount >= CONTAINER_MAX_RETRIES) {
+            debug.warn(`Container not found after ${CONTAINER_MAX_RETRIES} retries, giving up`);
+            return;
+          }
+          debug.log(`Container not found, retry ${retryCount}/${CONTAINER_MAX_RETRIES}...`);
+          if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(waitForContainer, { timeout: 2000 });
+          } else {
+            setTimeout(waitForContainer, 500);
+          }
+        }
+      };
+      waitForContainer();
+    } else {
+      debug.info('Extension disabled for this site');
+    }
+
+    if (settings.enableMemoryMonitor) {
+      memoryMonitor.start();
+    }
+
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      switch (message.type) {
+        case MESSAGES.SETTINGS_UPDATED: {
+          settings = getSiteSettings(message.settings, siteId);
+          debug.setEnabled(settings.debugMode);
+          debug.log('Settings updated', settings);
+          trimmer.updateSettings(settings);
+          memoryMonitor.updateSettings(settings);
+          sendResponse({ success: true });
+          break;
+        }
+        case MESSAGES.GET_STATS: {
+          const stats = trimmer.getStats();
+          const memStats = memoryMonitor.getStats();
+          const response = {
+            ...stats,
+            ...memStats
+          };
+          debug.log('Stats requested', response);
+          sendResponse(response);
+          break;
+        }
+        case MESSAGES.FORCE_CLEANUP: {
+          debug.info('Force cleanup requested');
+          trimmer.forceCleanup();
+          sendResponse({ success: true, ...trimmer.getStats() });
+          break;
+        }
+        case MESSAGES.RESTORE_ALL: {
+          debug.info('Restore all requested');
+          trimmer.restoreAll();
+          sendResponse({ success: true });
+          break;
         }
       }
-    };
-    waitForContainer();
-  } else {
-    debug.info('Extension disabled for this site');
-  }
+      return true;
+    });
 
-  if (settings.enableMemoryMonitor) {
-    memoryMonitor.start();
-  }
-
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    switch (message.type) {
-      case MESSAGES.SETTINGS_UPDATED: {
-        settings = getSiteSettings(message.settings, siteId);
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'sync' && changes[STORAGE_KEY]) {
+        const newSettings = changes[STORAGE_KEY].newValue;
+        settings = getSiteSettings(newSettings, siteId);
         debug.setEnabled(settings.debugMode);
-        debug.log('Settings updated', settings);
+        debug.log('Storage changed, updating settings');
         trimmer.updateSettings(settings);
         memoryMonitor.updateSettings(settings);
-        sendResponse({ success: true });
-        break;
       }
-      case MESSAGES.GET_STATS: {
-        const stats = trimmer.getStats();
-        const memStats = memoryMonitor.getStats();
-        const response = {
-          ...stats,
-          ...memStats
-        };
-        debug.log('Stats requested', response);
-        sendResponse(response);
-        break;
-      }
-      case MESSAGES.FORCE_CLEANUP: {
-        debug.info('Force cleanup requested');
-        trimmer.forceCleanup();
-        sendResponse({ success: true, ...trimmer.getStats() });
-        break;
-      }
-      case MESSAGES.RESTORE_ALL: {
-        debug.info('Restore all requested');
-        trimmer.restoreAll();
-        sendResponse({ success: true });
-        break;
-      }
-    }
-    return true;
-  });
+    });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'sync' && changes[STORAGE_KEY]) {
-      const newSettings = changes[STORAGE_KEY].newValue;
-      settings = getSiteSettings(newSettings, siteId);
-      debug.setEnabled(settings.debugMode);
-      debug.log('Storage changed, updating settings');
-      trimmer.updateSettings(settings);
-      memoryMonitor.updateSettings(settings);
-    }
-  });
-
-  window.__aico = { trimmer, memoryMonitor, debug };
+    window.__aico = { trimmer, memoryMonitor, debug };
+  } catch (error) {
+    console.error('[AICO] Initialization failed:', error);
+  }
 }
 
 init();

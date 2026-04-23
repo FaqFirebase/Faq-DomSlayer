@@ -6,7 +6,48 @@ class DomTrimmer {
     this.trimmedCount = 0;
     this.observer = null;
     this.isRestoring = false;
+    this.isTrimming = false;
     this.trimTimeout = null;
+  }
+
+  _incrementTrimmed(count) {
+    this.trimmedCount += count;
+  }
+
+  _decrementTrimmed(count) {
+    this.trimmedCount = Math.max(0, this.trimmedCount - count);
+  }
+
+  /**
+   * Count actual trimmed messages from DOM state.
+   * Handles individual placeholders (count=1), grouped placeholders (count from text),
+   * and collapsed elements (count=1 each).
+   */
+  countTrimmedMessages() {
+    let count = 0;
+    try {
+      const trimmed = document.querySelectorAll(`[${SELECTORS.PLACEHOLDER_ATTR}="true"]`);
+      for (const el of trimmed) {
+        const mode = el.getAttribute('data-aico-mode');
+        if (mode === 'placeholder') {
+          // Grouped placeholder text: "[N trimmed messages] ..."
+          const match = el.textContent.match(/^\[(\d+) trimmed messages?\]/);
+          count += match ? parseInt(match[1], 10) : 1;
+        } else {
+          // Collapsed or unknown mode
+          count += 1;
+        }
+      }
+    } catch {}
+    return count;
+  }
+
+  /**
+   * Sync internal counter with actual DOM state.
+   * Handles pre-existing trimmed elements from previous sessions.
+   */
+  _syncTrimmedCount() {
+    this.trimmedCount = this.countTrimmedMessages();
   }
 
   updateSettings(settings) {
@@ -30,7 +71,7 @@ class DomTrimmer {
 
     this.debug.log('Starting DOM observation');
     this.observer = this.adapter.observeNewMessages(() => {
-      if (!this.isRestoring) {
+      if (!this.isRestoring && !this.isTrimming) {
         this.scheduleTrim();
       }
     });
@@ -52,33 +93,44 @@ class DomTrimmer {
   performTrim() {
     if (!this.settings.enabled) return;
 
-    const messages = this.adapter.getMessageContainers();
-    if (!messages || messages.length === 0) {
+    // Sync counter with DOM to handle pre-existing trimmed elements
+    this._syncTrimmedCount();
+
+    const nodeList = this.adapter.getMessageContainers();
+    if (!nodeList || nodeList.length === 0) {
       this.debug.log('No messages found to trim');
       return;
     }
 
+    const messages = Array.from(nodeList);
     const maxMessages = this.settings.maxMessages;
     const trimMode = this.settings.trimMode;
 
-    this.debug.log(`Messages: ${messages.length}, max: ${maxMessages}, mode: ${trimMode}`);
+    this.debug.log(`Messages: ${messages.length}, max: ${maxMessages}, mode: ${trimMode}, trimmed: ${this.trimmedCount}`);
 
     if (messages.length <= maxMessages) return;
 
     const excess = messages.length - maxMessages;
-    const toTrim = Array.from(messages).slice(0, excess);
+    const toTrim = messages.slice(0, excess);
 
-    this.debug.info(`Trimming ${toTrim.length} messages`);
+    // Skip already-trimmed elements (collapsed mode keeps originals in DOM)
+    const untrimmed = toTrim.filter(el => !el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR));
+    if (untrimmed.length === 0) return;
+
+    this.debug.info(`Trimming ${untrimmed.length} messages`);
+
+    // Suppress observer during trim to prevent feedback loops
+    this.isTrimming = true;
 
     if (trimMode === TRIM_MODES.PLACEHOLDER) {
-      this.placeholderElements(toTrim);
-      return;
+      this.placeholderElements(untrimmed);
+    } else {
+      for (const el of untrimmed) {
+        this.trimElement(el, trimMode);
+      }
     }
 
-    for (const el of toTrim) {
-      if (el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR)) continue;
-      this.trimElement(el, trimMode);
-    }
+    this.isTrimming = false;
   }
 
   trimElement(el, mode) {
@@ -94,11 +146,11 @@ class DomTrimmer {
         this.placeholderElement(el);
         break;
     }
-    this.trimmedCount++;
+    this._incrementTrimmed(1);
   }
 
   placeholderElements(elements) {
-    const chunks = this.groupElementsByParent(elements.filter(el => el.parentNode && !el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR)));
+    const chunks = this.groupElementsByParent(elements.filter(el => el.parentNode));
 
     for (const chunk of chunks) {
       if (chunk.length >= PLACEHOLDER_GROUP_MIN_SIZE) {
@@ -106,7 +158,7 @@ class DomTrimmer {
       } else {
         for (const el of chunk) {
           this.placeholderElement(el);
-          this.trimmedCount++;
+          this._incrementTrimmed(1);
         }
       }
     }
@@ -138,6 +190,7 @@ class DomTrimmer {
     const placeholder = document.createElement('div');
     placeholder.className = SELECTORS.PLACEHOLDER_CLASS;
     placeholder.setAttribute(SELECTORS.PLACEHOLDER_ATTR, 'true');
+    placeholder.setAttribute('data-aico-mode', 'placeholder');
     placeholder.style.cssText = 'padding:8px 12px;margin:4px 0;color:#8888a0;font-size:12px;border-left:3px solid #3a3a4e;background:#1e1e30;border-radius:4px;cursor:pointer;transition:background 0.15s;';
     placeholder.textContent = textContent;
     placeholder.title = title;
@@ -151,16 +204,27 @@ class DomTrimmer {
       'Click to restore this message'
     );
 
-    const originalHTML = el.outerHTML;
+    const originalNode = el.cloneNode(true);
     const originalParent = el.parentNode;
     const nextSibling = el.nextSibling;
 
     placeholder._restore = () => {
-      const restored = this.restoreHtml(originalHTML, originalParent, nextSibling, placeholder);
-      if (restored) {
-        placeholder.remove();
-        this.trimmedCount = Math.max(0, this.trimmedCount - 1);
+      const fallbackParent = placeholder.parentNode || originalParent;
+      if (!fallbackParent) return;
+
+      originalNode.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
+      originalNode.classList.remove(SELECTORS.PLACEHOLDER_CLASS);
+      originalNode.removeAttribute('data-aico-mode');
+
+      if (nextSibling && nextSibling.parentNode === fallbackParent) {
+        fallbackParent.insertBefore(originalNode, nextSibling);
+      } else if (placeholder.parentNode === fallbackParent) {
+        fallbackParent.insertBefore(originalNode, placeholder);
+      } else {
+        fallbackParent.appendChild(originalNode);
       }
+      placeholder.remove();
+      this._decrementTrimmed(1);
     };
 
     placeholder.addEventListener('click', () => {
@@ -174,10 +238,8 @@ class DomTrimmer {
 
   placeholderGroupElements(elements) {
     const first = elements[0];
-    const entries = elements.map(el => ({
-      originalHTML: el.outerHTML,
-      originalParent: el.parentNode
-    }));
+    const originalNodes = elements.map(el => el.cloneNode(true));
+    const originalParents = elements.map(el => el.parentNode);
     const firstPreview = this.extractPreviewText(elements[0], PLACEHOLDER_GROUP_PREVIEW_LENGTH);
     const lastPreview = this.extractPreviewText(elements[elements.length - 1], PLACEHOLDER_GROUP_PREVIEW_LENGTH);
     const placeholder = this.createPlaceholder(
@@ -186,11 +248,23 @@ class DomTrimmer {
     );
 
     placeholder._restore = () => {
-      for (const entry of entries) {
-        this.restoreHtml(entry.originalHTML, entry.originalParent, placeholder, placeholder);
+      for (let i = 0; i < originalNodes.length; i++) {
+        const node = originalNodes[i];
+        const parent = placeholder.parentNode || originalParents[i];
+        if (!parent) continue;
+
+        node.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
+        node.classList.remove(SELECTORS.PLACEHOLDER_CLASS);
+        node.removeAttribute('data-aico-mode');
+
+        if (placeholder.parentNode === parent) {
+          parent.insertBefore(node, placeholder);
+        } else {
+          parent.appendChild(node);
+        }
       }
       placeholder.remove();
-      this.trimmedCount = Math.max(0, this.trimmedCount - entries.length);
+      this._decrementTrimmed(originalNodes.length);
     };
 
     placeholder.addEventListener('click', () => {
@@ -203,43 +277,22 @@ class DomTrimmer {
     for (const el of elements) {
       el.remove();
     }
-    this.trimmedCount += elements.length;
-  }
-
-  restoreHtml(originalHTML, originalParent, nextSibling, placeholder) {
-    const temp = document.createElement('div');
-    temp.innerHTML = originalHTML;
-    const restored = temp.firstElementChild;
-    if (!restored) return null;
-
-    restored.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
-    restored.classList.remove(SELECTORS.PLACEHOLDER_CLASS);
-    const fallbackParent = placeholder.parentNode || originalParent;
-    if (!fallbackParent) return null;
-
-    if (nextSibling && nextSibling.parentNode === fallbackParent) {
-      fallbackParent.insertBefore(restored, nextSibling);
-    } else if (placeholder.parentNode === fallbackParent) {
-      fallbackParent.insertBefore(restored, placeholder);
-    } else {
-      fallbackParent.appendChild(restored);
-    }
-
-    return restored;
+    this._incrementTrimmed(elements.length);
   }
 
   collapseElement(el) {
-    const originalHeight = el.scrollHeight;
     el.setAttribute(SELECTORS.PLACEHOLDER_ATTR, 'true');
-    el.style.cssText = `max-height:40px;overflow:hidden;opacity:0.5;cursor:pointer;`;
+    el.setAttribute('data-aico-mode', 'collapse');
+    el.style.cssText = 'max-height:40px;overflow:hidden;opacity:0.5;cursor:pointer;';
     el.title = 'Click to expand';
 
     const expandHandler = () => {
-      el.style.maxHeight = originalHeight + 'px';
+      el.style.maxHeight = el.scrollHeight + 'px';
       el.style.opacity = '1';
       el.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
+      el.removeAttribute('data-aico-mode');
       el.removeEventListener('click', expandHandler);
-      this.trimmedCount = Math.max(0, this.trimmedCount - 1);
+      this._decrementTrimmed(1);
     };
     el.addEventListener('click', expandHandler);
   }
@@ -272,13 +325,15 @@ class DomTrimmer {
     const placeholders = document.querySelectorAll(`[${SELECTORS.PLACEHOLDER_ATTR}="true"]`);
     this.debug.info(`Restoring ${placeholders.length} trimmed elements`);
     for (const ph of placeholders) {
-      if (ph._restore) {
+      const mode = ph.getAttribute('data-aico-mode');
+      if (mode === 'placeholder' && ph._restore) {
         ph._restore();
-      } else {
+      } else if (mode === 'collapse') {
         ph.style.maxHeight = '';
         ph.style.opacity = '';
         ph.style.cursor = '';
         ph.removeAttribute(SELECTORS.PLACEHOLDER_ATTR);
+        ph.removeAttribute('data-aico-mode');
         ph.removeAttribute('title');
       }
     }
@@ -288,19 +343,14 @@ class DomTrimmer {
 
   forceCleanup() {
     this.performTrim();
-    if (typeof window.requestIdleCallback === 'function') {
-      requestIdleCallback(() => {
-        if (window.gc) window.gc();
-      });
-    }
   }
 
   getStats() {
     const messages = this.adapter.getMessageContainers();
     return {
-      domNodes: document.querySelectorAll('*').length,
+      domNodes: document.getElementsByTagName('*').length,
       messageCount: messages ? messages.length : 0,
-      trimmedCount: this.trimmedCount,
+      trimmedCount: this.countTrimmedMessages(),
       siteId: this.adapter.SITE_ID
     };
   }

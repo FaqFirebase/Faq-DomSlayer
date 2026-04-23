@@ -1,14 +1,47 @@
 class ChatGPTAdapter {
   constructor() {
     this.SITE_ID = 'chatgpt';
+    this._cachedContainer = null;
+    this._cacheObserver = null;
   }
 
-  getChatContainer() {
+  _queryContainer() {
     return document.querySelector('main') ||
            document.querySelector('[role="main"]') ||
            document.querySelector('.flex-1.overflow-hidden') ||
            document.querySelector('#__next main') ||
            document.querySelector('[class*="relative"][class*="flex-1"]');
+  }
+
+  getChatContainer() {
+    if (this._cachedContainer && this._cachedContainer.isConnected) {
+      return this._cachedContainer;
+    }
+    this._invalidateContainerCache();
+    const container = this._queryContainer();
+    if (container) {
+      this._cachedContainer = container;
+      this._observeContainerRemoval(container);
+    }
+    return container;
+  }
+
+  _observeContainerRemoval(container) {
+    if (this._cacheObserver) this._cacheObserver.disconnect();
+    this._cacheObserver = new MutationObserver(() => {
+      if (!container.isConnected) {
+        this._invalidateContainerCache();
+      }
+    });
+    this._cacheObserver.observe(container.parentNode || document.body, { childList: true });
+  }
+
+  _invalidateContainerCache() {
+    this._cachedContainer = null;
+    if (this._cacheObserver) {
+      this._cacheObserver.disconnect();
+      this._cacheObserver = null;
+    }
   }
 
   getMessageContainers() {
