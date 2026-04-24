@@ -87,7 +87,7 @@ class DomTrimmer {
 
   scheduleTrim() {
     if (this.trimTimeout) clearTimeout(this.trimTimeout);
-    this.trimTimeout = setTimeout(() => this.performTrim(), 500);
+    this.trimTimeout = setTimeout(() => this.performTrim(), TRIM_DEBOUNCE_MS);
   }
 
   performTrim() {
@@ -122,15 +122,19 @@ class DomTrimmer {
     // Suppress observer during trim to prevent feedback loops
     this.isTrimming = true;
 
-    if (trimMode === TRIM_MODES.PLACEHOLDER) {
-      this.placeholderElements(untrimmed);
-    } else {
-      for (const el of untrimmed) {
-        this.trimElement(el, trimMode);
+    try {
+      if (trimMode === TRIM_MODES.PLACEHOLDER) {
+        this.placeholderElements(untrimmed);
+      } else {
+        for (const el of untrimmed) {
+          this.trimElement(el, trimMode);
+        }
       }
+    } catch (error) {
+      this.debug.error('Trim failed', error);
+    } finally {
+      this.isTrimming = false;
     }
-
-    this.isTrimming = false;
   }
 
   trimElement(el, mode) {

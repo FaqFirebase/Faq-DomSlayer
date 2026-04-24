@@ -68,9 +68,9 @@ async function init() {
           }
           debug.log(`Container not found, retry ${retryCount}/${CONTAINER_MAX_RETRIES}...`);
           if (typeof requestIdleCallback === 'function') {
-            requestIdleCallback(waitForContainer, { timeout: 2000 });
+            requestIdleCallback(waitForContainer, { timeout: CONTAINER_RETRY_IDLE_TIMEOUT_MS });
           } else {
-            setTimeout(waitForContainer, 500);
+            setTimeout(waitForContainer, CONTAINER_RETRY_DELAY_MS);
           }
         }
       };
@@ -84,39 +84,49 @@ async function init() {
     }
 
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      switch (message.type) {
-        case MESSAGES.SETTINGS_UPDATED: {
-          settings = getSiteSettings(message.settings, siteId);
-          debug.setEnabled(settings.debugMode);
-          debug.log('Settings updated', settings);
-          trimmer.updateSettings(settings);
-          memoryMonitor.updateSettings(settings);
-          sendResponse({ success: true });
-          break;
+      const messageType = message?.type;
+
+      try {
+        switch (messageType) {
+          case MESSAGES.SETTINGS_UPDATED: {
+            settings = getSiteSettings(message.settings, siteId);
+            debug.setEnabled(settings.debugMode);
+            debug.log('Settings updated', settings);
+            trimmer.updateSettings(settings);
+            memoryMonitor.updateSettings(settings);
+            sendResponse({ success: true });
+            break;
+          }
+          case MESSAGES.GET_STATS: {
+            const stats = trimmer.getStats();
+            const memStats = memoryMonitor.getStats();
+            const response = {
+              success: true,
+              ...stats,
+              ...memStats
+            };
+            debug.log('Stats requested', response);
+            sendResponse(response);
+            break;
+          }
+          case MESSAGES.FORCE_CLEANUP: {
+            debug.info('Force cleanup requested');
+            trimmer.forceCleanup();
+            sendResponse({ success: true, ...trimmer.getStats() });
+            break;
+          }
+          case MESSAGES.RESTORE_ALL: {
+            debug.info('Restore all requested');
+            trimmer.restoreAll();
+            sendResponse({ success: true });
+            break;
+          }
+          default:
+            sendResponse({ success: false, error: `Unsupported message type: ${messageType}` });
         }
-        case MESSAGES.GET_STATS: {
-          const stats = trimmer.getStats();
-          const memStats = memoryMonitor.getStats();
-          const response = {
-            ...stats,
-            ...memStats
-          };
-          debug.log('Stats requested', response);
-          sendResponse(response);
-          break;
-        }
-        case MESSAGES.FORCE_CLEANUP: {
-          debug.info('Force cleanup requested');
-          trimmer.forceCleanup();
-          sendResponse({ success: true, ...trimmer.getStats() });
-          break;
-        }
-        case MESSAGES.RESTORE_ALL: {
-          debug.info('Restore all requested');
-          trimmer.restoreAll();
-          sendResponse({ success: true });
-          break;
-        }
+      } catch (error) {
+        debug.error('Message handling failed', messageType, error);
+        sendResponse({ success: false, error: error.message || 'Message handling failed' });
       }
       return true;
     });

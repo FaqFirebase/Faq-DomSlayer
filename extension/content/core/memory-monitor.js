@@ -10,7 +10,7 @@ class MemoryMonitor {
     if (this.isActive) return;
     this.isActive = true;
     this.debug.info('MemoryMonitor starting');
-    this.monitorInterval = setInterval(() => this.collectStats(), 5000);
+    this.monitorInterval = setInterval(() => this.collectStats(), MEMORY_MONITOR_INTERVAL_MS);
     this.collectStats();
   }
 

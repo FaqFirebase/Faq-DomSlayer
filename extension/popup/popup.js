@@ -198,41 +198,48 @@ async function saveSettings() {
 
 function showStatus(text) {
   $('statusText').textContent = text;
-  setTimeout(() => { $('statusText').textContent = ''; }, 1500);
+  setTimeout(() => { $('statusText').textContent = ''; }, POPUP_STATUS_CLEAR_MS);
+}
+
+function setStatsUnavailable() {
+  $('domNodes').textContent = '--';
+  $('trimmedCount').textContent = '--';
+  $('currentSite').textContent = '--';
+  $('heapUsed').textContent = '--';
+  $('heapTotal').textContent = '--';
 }
 
 async function refreshStats() {
   try {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.GET_STATS });
-    if (response && response.success !== false) {
-      $('domNodes').textContent = response.domNodes != null ? response.domNodes : '--';
-      $('trimmedCount').textContent = response.trimmedCount != null ? response.trimmedCount : '--';
-      $('currentSite').textContent = response.siteId || '--';
+    if (!response || response.success === false) {
+      setStatsUnavailable();
+      return;
+    }
 
-      if (response.heapUsed != null) {
-        $('heapUsed').textContent = response.heapUsed + ' MB';
-      } else {
-        $('heapUsed').textContent = '--';
-      }
-      if (response.heapTotal != null) {
-        $('heapTotal').textContent = response.heapTotal + ' MB';
-      } else {
-        $('heapTotal').textContent = '--';
-      }
+    $('domNodes').textContent = response.domNodes != null ? response.domNodes : '--';
+    $('trimmedCount').textContent = response.trimmedCount != null ? response.trimmedCount : '--';
+    $('currentSite').textContent = response.siteId || '--';
+
+    if (response.heapUsed != null) {
+      $('heapUsed').textContent = response.heapUsed + ' MB';
+    } else {
+      $('heapUsed').textContent = '--';
+    }
+    if (response.heapTotal != null) {
+      $('heapTotal').textContent = response.heapTotal + ' MB';
+    } else {
+      $('heapTotal').textContent = '--';
     }
   } catch {
-    $('domNodes').textContent = '--';
-    $('trimmedCount').textContent = '--';
-    $('currentSite').textContent = '--';
-    $('heapUsed').textContent = '--';
-    $('heapTotal').textContent = '--';
+    setStatsUnavailable();
   }
 }
 
 function startAutoRefresh() {
   stopAutoRefresh();
   refreshStats();
-  refreshInterval = setInterval(refreshStats, 2000);
+  refreshInterval = setInterval(refreshStats, POPUP_STATS_REFRESH_MS);
 }
 
 function stopAutoRefresh() {
@@ -264,6 +271,7 @@ $('forceCleanup').addEventListener('click', async () => {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.FORCE_CLEANUP });
     if (response?.success === false) throw new Error(response.error);
     showStatus('Cleanup performed');
+    refreshStats();
   } catch {
     showStatus('Not on a supported site');
   }
@@ -274,6 +282,7 @@ $('restoreAll').addEventListener('click', async () => {
     const response = await chrome.runtime.sendMessage({ type: MESSAGES.RESTORE_ALL });
     if (response?.success === false) throw new Error(response.error);
     showStatus('All messages restored');
+    refreshStats();
   } catch {
     showStatus('Not on a supported site');
   }

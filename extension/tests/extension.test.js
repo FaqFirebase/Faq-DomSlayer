@@ -77,6 +77,12 @@ const {
   PLACEHOLDER_PREVIEW_LENGTH,
   PLACEHOLDER_GROUP_PREVIEW_LENGTH,
   CONTAINER_MAX_RETRIES,
+  CONTAINER_RETRY_IDLE_TIMEOUT_MS,
+  CONTAINER_RETRY_DELAY_MS,
+  TRIM_DEBOUNCE_MS,
+  MEMORY_MONITOR_INTERVAL_MS,
+  POPUP_STATUS_CLEAR_MS,
+  POPUP_STATS_REFRESH_MS,
   detectSiteFromHostname,
   getSiteSettings,
   normalizeSettings
@@ -92,6 +98,12 @@ global.PLACEHOLDER_GROUP_MIN_SIZE = PLACEHOLDER_GROUP_MIN_SIZE;
 global.PLACEHOLDER_PREVIEW_LENGTH = PLACEHOLDER_PREVIEW_LENGTH;
 global.PLACEHOLDER_GROUP_PREVIEW_LENGTH = PLACEHOLDER_GROUP_PREVIEW_LENGTH;
 global.CONTAINER_MAX_RETRIES = CONTAINER_MAX_RETRIES;
+global.CONTAINER_RETRY_IDLE_TIMEOUT_MS = CONTAINER_RETRY_IDLE_TIMEOUT_MS;
+global.CONTAINER_RETRY_DELAY_MS = CONTAINER_RETRY_DELAY_MS;
+global.TRIM_DEBOUNCE_MS = TRIM_DEBOUNCE_MS;
+global.MEMORY_MONITOR_INTERVAL_MS = MEMORY_MONITOR_INTERVAL_MS;
+global.POPUP_STATUS_CLEAR_MS = POPUP_STATUS_CLEAR_MS;
+global.POPUP_STATS_REFRESH_MS = POPUP_STATS_REFRESH_MS;
 
 const { ChatGPTAdapter } = require('../content/sites/chatgpt.js');
 const { GeminiAdapter } = require('../content/sites/gemini.js');
@@ -99,6 +111,7 @@ const { ClaudeAdapter } = require('../content/sites/claude.js');
 const { PerplexityAdapter } = require('../content/sites/perplexity.js');
 const { CopilotAdapter } = require('../content/sites/copilot.js');
 const { DomTrimmer } = require('../content/core/dom-trimmer.js');
+const manifest = require('../manifest.json');
 
 // ---------------------------------------------------------------------------
 // Site Detection Tests
@@ -187,6 +200,10 @@ function testDefaultSiteOverrideShape() {
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.enabled, 'boolean');
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.maxMessages, 'number');
   assert.strictEqual(typeof DEFAULT_SITE_OVERRIDE.trimMode, 'string');
+}
+
+function testManifestScriptingPermission() {
+  assert.ok(manifest.permissions.includes('scripting'), 'Background recovery injection requires scripting permission');
 }
 
 function testNormalizeSettings() {
@@ -527,6 +544,12 @@ function testDomTrimmerPlaceholderRestoreUsesPlaceholderParent() {
 function testContainerMaxRetriesConstant() {
   assert.strictEqual(typeof CONTAINER_MAX_RETRIES, 'number');
   assert.ok(CONTAINER_MAX_RETRIES > 0, 'CONTAINER_MAX_RETRIES should be positive');
+  assert.strictEqual(typeof CONTAINER_RETRY_IDLE_TIMEOUT_MS, 'number');
+  assert.strictEqual(typeof CONTAINER_RETRY_DELAY_MS, 'number');
+  assert.strictEqual(typeof TRIM_DEBOUNCE_MS, 'number');
+  assert.strictEqual(typeof MEMORY_MONITOR_INTERVAL_MS, 'number');
+  assert.strictEqual(typeof POPUP_STATUS_CLEAR_MS, 'number');
+  assert.strictEqual(typeof POPUP_STATS_REFRESH_MS, 'number');
 }
 
 function testCountTrimmedMessages() {
@@ -577,6 +600,26 @@ function testGetStatsUsesDOMCount() {
   mockQuerySelectorAllResult = saved;
 }
 
+function testDomTrimmerResetsTrimGuardAfterTrimError() {
+  const adapter = {
+    SITE_ID: SITE_IDS.CHATGPT,
+    getMessageContainers: () => [
+      { hasAttribute: () => false, parentNode: {} },
+      { hasAttribute: () => false, parentNode: {} }
+    ]
+  };
+  const debug = { log: () => {}, warn: () => {}, info: () => {}, error: () => {} };
+  const settings = { enabled: true, maxMessages: 1, trimMode: TRIM_MODES.PLACEHOLDER };
+  const trimmer = new DomTrimmer(adapter, settings, debug);
+
+  trimmer.placeholderElements = () => {
+    throw new Error('mock trim failure');
+  };
+
+  trimmer.performTrim();
+  assert.strictEqual(trimmer.isTrimming, false, 'performTrim should always clear isTrimming');
+}
+
 // ---------------------------------------------------------------------------
 // Test Runner
 // ---------------------------------------------------------------------------
@@ -586,6 +629,7 @@ function runTests() {
     { name: 'siteDetectionLogic', fn: testSiteDetectionLogic },
     { name: 'settingsMerging', fn: testSettingsMerging },
     { name: 'defaultSiteOverrideShape', fn: testDefaultSiteOverrideShape },
+    { name: 'manifestScriptingPermission', fn: testManifestScriptingPermission },
     { name: 'normalizeSettings', fn: testNormalizeSettings },
     { name: 'domTrimmerInitialization', fn: testDomTrimmerInitialization },
     { name: 'domTrimmerPlaceholderMode', fn: testDomTrimmerPlaceholderMode },
@@ -598,7 +642,8 @@ function runTests() {
     { name: 'domTrimmerPlaceholderRestoreUsesPlaceholderParent', fn: testDomTrimmerPlaceholderRestoreUsesPlaceholderParent },
     { name: 'containerMaxRetriesConstant', fn: testContainerMaxRetriesConstant },
     { name: 'countTrimmedMessages', fn: testCountTrimmedMessages },
-    { name: 'getStatsUsesDOMCount', fn: testGetStatsUsesDOMCount }
+    { name: 'getStatsUsesDOMCount', fn: testGetStatsUsesDOMCount },
+    { name: 'domTrimmerResetsTrimGuardAfterTrimError', fn: testDomTrimmerResetsTrimGuardAfterTrimError }
   ];
 
   let passed = 0;
