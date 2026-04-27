@@ -44,16 +44,7 @@ global.document = {
 };
 
 global.window = {
-  location: { hostname: 'chatgpt.com' },
-  requestIdleCallback: (cb) => setTimeout(cb, 0),
-  gc: () => {},
-  performance: { memory: null },
-  setInterval: (fn, delay) => { fn(); return 1; },
-  clearInterval: () => {},
-  setTimeout: (fn, delay) => { if (typeof fn === 'function') fn(); return 1; },
-  clearTimeout: () => {},
-  requestAnimationFrame: (fn) => { fn(0); return 1; },
-  cancelAnimationFrame: () => {}
+  location: { hostname: 'chatgpt.com' }
 };
 
 global.Node = { ELEMENT_NODE: 1 };

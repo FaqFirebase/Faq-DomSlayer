@@ -358,12 +358,6 @@ class DomTrimmer {
       siteId: this.adapter.SITE_ID
     };
   }
-
-  destroy() {
-    this.stopObserving();
-    if (this.trimTimeout) clearTimeout(this.trimTimeout);
-    this.restoreAll();
-  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

@@ -25,44 +25,17 @@ class MemoryMonitor {
 
   collectStats() {
     const stats = {
-      domNodes: document.getElementsByTagName('*').length,
-      timestamp: Date.now()
+      domNodes: document.getElementsByTagName('*').length
     };
 
     if (performance.memory) {
       stats.heapUsed = Math.round(performance.memory.usedJSHeapSize / (1024 * 1024));
       stats.heapTotal = Math.round(performance.memory.totalJSHeapSize / (1024 * 1024));
-      stats.heapLimit = Math.round(performance.memory.jsHeapSizeLimit / (1024 * 1024));
     }
-
-    if (performance.measureUserAgentSpecificMemory) {
-      performance.measureUserAgentSpecificMemory()
-        .then(result => {
-          if (result && result.bytes) {
-            stats.totalMemory = Math.round(result.bytes / (1024 * 1024));
-            // Update lastStats so totalMemory is available on next getStats() call
-            if (this.lastStats) {
-              this.lastStats.totalMemory = stats.totalMemory;
-            }
-          }
-        })
-        .catch(() => {});
-    }
-
-    stats.trimmedElements = this.countTrimmedElements();
 
     this.lastStats = stats;
     this.debug.log('Memory stats', stats);
     return stats;
-  }
-
-  countTrimmedElements() {
-    let count = 0;
-    try {
-      const elements = document.querySelectorAll('[data-aico-trimmed]');
-      count = elements.length;
-    } catch {}
-    return count;
   }
 
   getStats() {
