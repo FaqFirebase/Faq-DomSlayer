@@ -611,6 +611,45 @@ function testDomTrimmerResetsTrimGuardAfterTrimError() {
   assert.strictEqual(trimmer.isTrimming, false, 'performTrim should always clear isTrimming');
 }
 
+function testDomTrimmerSkipsVirtualizedEmptyMessages() {
+  let replacedCount = 0;
+  const makeEl = (text) => ({
+    hasAttribute: () => false,
+    parentNode: { insertBefore: () => {}, appendChild: () => {} },
+    nextSibling: null,
+    textContent: text,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    cloneNode: function() {
+      return { querySelectorAll: () => [], textContent: text, removeAttribute: () => {}, classList: { remove: () => {} } };
+    },
+    replaceWith: function() { replacedCount++; },
+    style: {},
+    setAttribute: () => {},
+    getAttribute: () => null,
+    removeAttribute: () => {},
+    classList: { add: () => {}, remove: () => {} },
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  });
+
+  // maxMessages=1 => excess=2, so the two oldest are trim candidates: one
+  // virtualized empty shell (must be skipped) and one real message (trimmed).
+  const messages = [makeEl('   '), makeEl('Real message content'), makeEl('keeper')];
+  const adapter = {
+    SITE_ID: SITE_IDS.CHATGPT,
+    getMessageContainers: () => messages
+  };
+  const debug = { log: () => {}, warn: () => {}, info: () => {}, error: () => {} };
+  const settings = { enabled: true, maxMessages: 1, trimMode: TRIM_MODES.PLACEHOLDER };
+  const trimmer = new DomTrimmer(adapter, settings, debug);
+
+  trimmer.performTrim();
+
+  assert.strictEqual(replacedCount, 1, 'Only the message with content should be trimmed');
+  assert.strictEqual(trimmer.trimmedCount, 1, 'Virtualized empty shells must not be counted as trimmed');
+}
+
 // ---------------------------------------------------------------------------
 // Test Runner
 // ---------------------------------------------------------------------------
@@ -634,7 +673,8 @@ function runTests() {
     { name: 'containerMaxRetriesConstant', fn: testContainerMaxRetriesConstant },
     { name: 'countTrimmedMessages', fn: testCountTrimmedMessages },
     { name: 'getStatsUsesDOMCount', fn: testGetStatsUsesDOMCount },
-    { name: 'domTrimmerResetsTrimGuardAfterTrimError', fn: testDomTrimmerResetsTrimGuardAfterTrimError }
+    { name: 'domTrimmerResetsTrimGuardAfterTrimError', fn: testDomTrimmerResetsTrimGuardAfterTrimError },
+    { name: 'domTrimmerSkipsVirtualizedEmptyMessages', fn: testDomTrimmerSkipsVirtualizedEmptyMessages }
   ];
 
   let passed = 0;

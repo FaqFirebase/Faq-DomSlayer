@@ -114,7 +114,11 @@ class DomTrimmer {
     const toTrim = messages.slice(0, excess);
 
     // Skip already-trimmed elements (collapsed mode keeps originals in DOM)
-    const untrimmed = toTrim.filter(el => !el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR));
+    // and elements the host app has already virtualized (empty shells): trimming
+    // those captures empty clones and breaks the host's own scroll-restore.
+    const untrimmed = toTrim.filter(el =>
+      !el.hasAttribute(SELECTORS.PLACEHOLDER_ATTR) && this._hasRenderableContent(el)
+    );
     if (untrimmed.length === 0) return;
 
     this.debug.info(`Trimming ${untrimmed.length} messages`);
@@ -304,6 +308,22 @@ class DomTrimmer {
   removeElement(el) {
     this.cleanupNodeListeners(el);
     el.remove();
+  }
+
+  /**
+   * Whether an element holds content worth trimming. Host apps (e.g. ChatGPT)
+   * virtualize offscreen messages into empty shells; trimming those yields
+   * blank "[message]" placeholders and breaks the host's scroll-restore.
+   */
+  _hasRenderableContent(el) {
+    if (!el) return false;
+    try {
+      if (typeof el.querySelector === 'function' &&
+          el.querySelector('img, pre, code, svg, canvas, video, audio')) {
+        return true;
+      }
+    } catch {}
+    return ((el.textContent || '').trim().length > 0);
   }
 
   extractPreviewText(el, maxLength = PLACEHOLDER_PREVIEW_LENGTH) {
